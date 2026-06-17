@@ -15,25 +15,33 @@ interface Row {
   source: string;
 }
 
-async function callGemini(prompt: string): Promise<string> {
+async function callGemini(prompt: string, timeoutMs = 20_000): Promise<string> {
   if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY tidak ditemukan");
 
-  const resp = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192, temperature: 0.7 },
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Gemini API error ${resp.status}: ${err}`);
+  try {
+    const resp = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Gemini API error ${resp.status}: ${err}`);
+    }
+
+    const data = await resp.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = await resp.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
 // ─── POST /api/gemini/validate ──────────────────────────────────────────────
