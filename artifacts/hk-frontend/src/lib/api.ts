@@ -1,0 +1,93 @@
+const BASE = '/api';
+
+export async function fetchApi<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const res = await fetch(BASE + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error || res.statusText);
+  }
+  return res.json();
+}
+
+export interface Row {
+  id: number;
+  draw_date: string;
+  result_4d: string;
+  result_3d: string;
+  result_2d: string;
+  source: string;
+}
+
+export interface StatsData {
+  totalDraws: number;
+  latestResult: Row | null;
+  recentResults: Row[];
+  posStats: {
+    pos: number;
+    label: string;
+    digits: { digit: number; count: number; pct: number; lastDrawsAgo: number }[];
+    hotDigit: { digit: number; count: number; pct: number; lastDrawsAgo: number };
+    coldDigit: { digit: number; count: number; pct: number; lastDrawsAgo: number };
+    freqDigit: { digit: number; count: number; pct: number; lastDrawsAgo: number };
+  }[];
+  hot2D: { number: string; count: number; lastDrawsAgo: number; isHot: boolean; isOverdue: boolean }[];
+  freq2D: { number: string; count: number; lastDrawsAgo: number; isHot: boolean; isOverdue: boolean }[];
+  overdue2D: { number: string; count: number; lastDrawsAgo: number; isHot: boolean; isOverdue: boolean }[];
+  freq3D: { number: string; count: number; lastDrawsAgo: number }[];
+  kepalaStats: { digit: number; count: number; pct: number; lastDrawsAgo: number }[];
+  ekorStats: { digit: number; count: number; pct: number; lastDrawsAgo: number }[];
+}
+
+export interface ShioEntry {
+  name: string;
+  emoji: string;
+  count: number;
+  lastIdx: number;
+  pct: number;
+  score: number;
+  nums: string[];
+}
+
+export interface ShioData {
+  currentShio: { name: string; emoji: string; number: string; date: string } | null;
+  predictedShios: ShioEntry[];
+  shioStats: ShioEntry[];
+  totalDraws: number;
+}
+
+export interface PolaPattern {
+  fromDigit: number;
+  toDigit: number;
+  count: number;
+  total: number;
+}
+
+export interface PolaData {
+  lastResult: string;
+  lastEkor: number;
+  lastKepala: number;
+  ekorPatterns: PolaPattern[];
+  kepalaPatterns: PolaPattern[];
+  totalPairs: number;
+}
+
+export interface FixData {
+  fix: Record<string, { number: string; shio: { emoji: string; name: string }; confidence: number }>;
+  signals: { shioBonus: string[]; ekorBonus: number[]; totalDraws: number };
+}
+
+export interface AccuracyData {
+  enough: boolean;
+  message?: string;
+  totalTested: number;
+  winrate: Record<string, { hits: number; total: number; pct: number }>;
+  history: { date: string; actual4d: string; actual3d: string; actual2d: string; hit4d: boolean; hit3d: boolean; hit2d: boolean }[];
+}
+
+export interface ResultsData {
+  total: number;
+  data: Row[];
+}

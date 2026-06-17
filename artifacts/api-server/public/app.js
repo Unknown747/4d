@@ -54,6 +54,7 @@ function showPage(id) {
   if (id === 'shio') loadShio();
   if (id === 'pola') loadPola();
   if (id === 'fix') loadAngkaFix();
+  if (id === 'backtesting') loadAccuracy();
 }
 
 // ─── Ball rendering ─────────────────────────────────────────────────────────
@@ -669,6 +670,64 @@ async function loadPola() {
 
   } catch (e) {
     toast('Gagal memuat Pola Ikutan: ' + e.message, 'error');
+  }
+}
+
+// ─── Backtesting / Akurasi ─────────────────────────────────────────────────────
+
+async function loadAccuracy() {
+  const ids = ['bt-winrate-4d','bt-winrate-3d','bt-winrate-2d','bt-history'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="loading-spinner"></div>';
+  });
+
+  try {
+    const data = await api('/accuracy');
+
+    if (!data.enough) {
+      document.getElementById('bt-winrate-4d').innerHTML = '';
+      document.getElementById('bt-winrate-3d').innerHTML = '';
+      document.getElementById('bt-winrate-2d').innerHTML = '';
+      document.getElementById('bt-history').innerHTML = `
+        <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:2rem;">
+          ${escapeHtml(data.message || 'Belum cukup data — tambahkan minimal 8 draw.')}
+        </td></tr>`;
+      return;
+    }
+
+    function renderWinrateCard(id, label, wr) {
+      const color = wr.pct >= 30 ? '#10b981' : wr.pct >= 15 ? 'var(--accent)' : '#3b82f6';
+      document.getElementById(id).innerHTML = `
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;">${escapeHtml(label)}</div>
+        <div style="font-size:2.4rem;font-weight:900;color:${color};line-height:1;">${wr.pct}%</div>
+        <div style="font-size:11px;color:var(--text-muted);margin:4px 0 10px;">${wr.hits} hit dari ${wr.total} draw</div>
+        <div style="background:var(--surface2);border-radius:99px;height:6px;overflow:hidden;">
+          <div style="height:100%;border-radius:99px;transition:width 1s;width:${Math.min(wr.pct * 2, 100)}%;background:${color};"></div>
+        </div>
+      `;
+    }
+
+    renderWinrateCard('bt-winrate-4d', '4D Win Rate', data.winrate['4d']);
+    renderWinrateCard('bt-winrate-3d', '3D Win Rate', data.winrate['3d']);
+    renderWinrateCard('bt-winrate-2d', '2D Win Rate', data.winrate['2d']);
+
+    document.getElementById('bt-tested-label').textContent = `${data.totalTested} draw diuji`;
+
+    document.getElementById('bt-history').innerHTML = data.history.map((row, i) => `
+      <tr>
+        <td style="color:var(--text-muted);font-size:11px;">${escapeHtml(row.date)}</td>
+        <td><strong class="text-mono">${escapeHtml(row.actual4d)}</strong></td>
+        <td class="text-accent text-mono">${escapeHtml(row.actual3d)}</td>
+        <td class="text-mono" style="color:var(--success);">${escapeHtml(row.actual2d)}</td>
+        <td style="text-align:center;">${row.hit4d ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--surface3);">—</span>'}</td>
+        <td style="text-align:center;">${row.hit3d ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--surface3);">—</span>'}</td>
+        <td style="text-align:center;">${row.hit2d ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--surface3);">—</span>'}</td>
+      </tr>
+    `).join('');
+
+  } catch (e) {
+    toast('Gagal memuat data akurasi: ' + e.message, 'error');
   }
 }
 

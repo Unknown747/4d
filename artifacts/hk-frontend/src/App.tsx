@@ -1,42 +1,73 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
+import { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Dashboard from './pages/Dashboard';
+import AngkaFix from './pages/AngkaFix';
+import Shio from './pages/Shio';
+import PolaIkutan from './pages/PolaIkutan';
+import Backtesting from './pages/Backtesting';
+import History from './pages/History';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+});
 
-function Home() {
+const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'fix', label: 'Angka Fix', icon: '🎯' },
+  { id: 'shio', label: 'Shio', icon: '🐉' },
+  { id: 'pola', label: 'Pola Ikutan', icon: '🔗' },
+  { id: 'backtest', label: 'Akurasi', icon: '📈' },
+  { id: 'history', label: 'History', icon: '📋' },
+] as const;
+
+type TabId = typeof TABS[number]['id'];
+
+function AppInner() {
+  const [tab, setTab] = useState<TabId>('dashboard');
+
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Replit Agent is building...</h1>
-        <p className="mt-2 text-sm text-gray-600">Your app will appear here once it's ready.</p>
-      </div>
+    <div className="min-h-screen bg-[#0a0e1a] text-slate-200 font-sans">
+      <nav className="sticky top-0 z-50 bg-[#111827] border-b border-[#1e2d45] backdrop-blur px-4 h-14 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-600 rounded-lg flex items-center justify-center text-base">🎰</div>
+          <span className="font-bold text-base hidden sm:inline">HK Toto Pro</span>
+          <span className="text-xs bg-emerald-500 text-emerald-950 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Live</span>
+        </div>
+
+        <div className="flex items-center gap-0.5 bg-[#1a2235] rounded-lg p-1 overflow-x-auto scrollbar-hide">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                tab === t.id
+                  ? 'bg-[#111827] text-white shadow'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-[#1e2d45]'
+              }`}
+            >
+              <span>{t.icon}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main className="max-w-5xl mx-auto px-4 py-5">
+        {tab === 'dashboard' && <Dashboard />}
+        {tab === 'fix' && <AngkaFix />}
+        {tab === 'shio' && <Shio />}
+        {tab === 'pola' && <PolaIkutan />}
+        {tab === 'backtest' && <Backtesting />}
+        {tab === 'history' && <History />}
+      </main>
     </div>
   );
 }
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
-
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AppInner />
     </QueryClientProvider>
   );
 }
-
-export default App;

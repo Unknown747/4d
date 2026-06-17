@@ -23,6 +23,7 @@
     <button class="nav-tab" data-page="shio" onclick="showPage('shio')">🐉 Shio</button>
     <button class="nav-tab" data-page="pola" onclick="showPage('pola')">🔗 Pola Ikutan</button>
     <button class="nav-tab" data-page="heatmap" onclick="showPage('heatmap')">Heat Map</button>
+    <button class="nav-tab" data-page="backtesting" onclick="showPage('backtesting')">📈 Akurasi</button>
     <button class="nav-tab" data-page="history" onclick="showPage('history')">History</button>
     <button class="nav-tab" data-page="input" onclick="showPage('input')">Input Result</button>
   </div>
@@ -369,6 +370,67 @@
         <div class="loading-spinner"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ===== BACKTESTING ===== -->
+  <div id="page-backtesting" class="page">
+
+    <div class="card section-gap" style="text-align:center;background:linear-gradient(135deg,#0d1b2a 0%,#111827 100%);">
+      <div style="font-size:1.2rem;font-weight:900;color:var(--text);">📈 Backtesting — Akurasi Prediksi</div>
+      <div style="font-size:11px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase;margin-top:4px;" id="bt-tested-label">— draw diuji</div>
+    </div>
+
+    <div class="grid-3 section-gap">
+      <div class="card" id="bt-winrate-4d" style="text-align:center;"><div class="loading-spinner"></div></div>
+      <div class="card" id="bt-winrate-3d" style="text-align:center;"><div class="loading-spinner"></div></div>
+      <div class="card" id="bt-winrate-2d" style="text-align:center;"><div class="loading-spinner"></div></div>
+    </div>
+
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">ℹ️ Cara Membaca Akurasi</span>
+      </div>
+      <div class="grid-3" style="gap:12px;font-size:12px;color:var(--text-muted);line-height:1.7;">
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;">
+          <strong style="color:var(--text);">4D</strong><br>
+          Angka 4D persis cocok dari 10 prediksi yang digenerate. Sangat sulit — keberhasilan &gt;5% dianggap baik.
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;">
+          <strong style="color:var(--text);">3D</strong><br>
+          3 digit terakhir cocok dari 7 prediksi 3D teratas. &gt;15% dianggap baik untuk statistik acak.
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;">
+          <strong style="color:var(--text);">2D</strong><br>
+          2 digit terakhir cocok dari 8 prediksi 2D. Baseline acak ~8%, target &gt;20% menunjukkan pola terdeteksi.
+        </div>
+      </div>
+    </div>
+
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">📋 Riwayat Backtesting</span>
+        <span class="text-xs text-muted">✓ = angka aktual ada dalam daftar prediksi</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>4D Aktual</th>
+              <th>3D</th>
+              <th>2D</th>
+              <th style="text-align:center;">Hit 4D</th>
+              <th style="text-align:center;">Hit 3D</th>
+              <th style="text-align:center;">Hit 2D</th>
+            </tr>
+          </thead>
+          <tbody id="bt-history">
+            <tr><td colspan="7" style="text-align:center;padding:2rem;"><div class="loading-spinner" style="margin:0 auto;"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <!-- ===== HISTORY ===== -->
