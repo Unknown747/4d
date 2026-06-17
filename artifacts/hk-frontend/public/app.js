@@ -271,8 +271,21 @@ async function loadPredictions() {
     const analyzedEl = document.getElementById('predict-draws-analyzed');
     if (analyzedEl) analyzedEl.textContent = `${data.totalDrawsAnalyzed} draw dianalisis`;
 
+    // Excluded notice
+    let excludedHtml = '';
+    if (data.excludedNumbers && data.excludedNumbers.length > 0) {
+      const chips = data.excludedNumbers.map(n =>
+        `<span class="bb-excluded-chip">${escapeHtml(n)}</span>`
+      ).join('');
+      excludedHtml = `
+        <div class="bb-excluded-notice" style="margin-bottom:10px;">
+          <span class="bb-excluded-label">🚫 Dibuang (baru keluar):</span>
+          <span class="bb-excluded-chips">${chips}</span>
+        </div>`;
+    }
+
     const maxScore = Math.max(...data.predictions.map(p => p.score), 1);
-    el.innerHTML = data.predictions.map((p, i) => {
+    const items = data.predictions.map((p, i) => {
       const numClass = currentPredictType === '4d' ? '' : 'sm';
       const pct = Math.round((p.score / maxScore) * 100);
       return `
@@ -289,6 +302,8 @@ async function loadPredictions() {
         </div>
       `;
     }).join('');
+
+    el.innerHTML = excludedHtml + items;
   } catch (e) {
     const div = document.createElement('div');
     div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;';

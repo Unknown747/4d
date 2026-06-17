@@ -182,6 +182,12 @@ router.get("/predict", (req, res): void => {
 
   const total = rows.length;
 
+  // Build exclusion sets from last 14 draws
+  const recent14 = rows.slice(0, 14);
+  const recentSet4D = new Set(recent14.map(r => r.result_4d.padStart(4, "0")));
+  const recentSet3D = new Set(recent14.map(r => r.result_4d.padStart(4, "0").slice(1)));
+  const recentSet2D = new Set(recent14.map(r => r.result_4d.padStart(4, "0").slice(2)));
+
   if (type === "2d") {
     const freq2D = build2dFreq(rows);
     const all2D = Object.entries(freq2D).map(([num, { count, lastIdx }]) => {
@@ -210,16 +216,21 @@ router.get("/predict", (req, res): void => {
     const positionalNum = `${hotKep}${hotEkor}`;
 
     const sorted = all2D.sort((a, b) => b.score - a.score);
-    const top = sorted.slice(0, 8);
 
-    // Add positional candidate if not already there
-    if (!top.find((x) => x.number === positionalNum)) {
+    // Separate excluded from valid
+    const excludedNums = sorted.filter(x => recentSet2D.has(x.number)).slice(0, 5).map(x => x.number);
+    const valid = sorted.filter(x => !recentSet2D.has(x.number));
+    const top = valid.slice(0, 8);
+
+    // Add positional candidate if not already there and not excluded
+    if (!top.find((x) => x.number === positionalNum) && !recentSet2D.has(positionalNum)) {
       top.push({ number: positionalNum, count: freq2D[positionalNum]?.count ?? 0, lastDrawsAgo: freq2D[positionalNum]?.lastIdx ?? 99, score: 0.5 });
     }
 
     res.json({
       type: "2d",
       mode,
+      excludedNumbers: excludedNums,
       predictions: top.slice(0, 8).map((x) => ({
         number: x.number,
         count: x.count,
@@ -253,8 +264,11 @@ router.get("/predict", (req, res): void => {
       return { number: num, count, lastDrawsAgo: lastIdx, score };
     });
 
-    const sorted3D = all3D.sort((a, b) => b.score - a.score).slice(0, 5);
-    const predictions = sorted3D.map((x) => ({
+    const sorted3D = all3D.sort((a, b) => b.score - a.score);
+    const excludedNums3D = sorted3D.filter(x => recentSet3D.has(x.number)).slice(0, 5).map(x => x.number);
+    const valid3D = sorted3D.filter(x => !recentSet3D.has(x.number));
+
+    const predictions = valid3D.slice(0, 5).map((x) => ({
       number: x.number,
       count: x.count,
       lastDrawsAgo: x.lastDrawsAgo,
@@ -269,11 +283,11 @@ router.get("/predict", (req, res): void => {
           : "Pola posisional",
     }));
 
-    // Add 2 positional-generated candidates
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Add positional-generated candidates (filtered)
+    for (let attempt = 0; attempt < 5; attempt++) {
       const digits = [1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
       const num = digits.map(String).join("");
-      if (!predictions.find((x) => x.number === num)) {
+      if (!predictions.find((x) => x.number === num) && !recentSet3D.has(num)) {
         predictions.push({
           number: num,
           count: freq3D[num]?.count ?? 0,
@@ -285,12 +299,12 @@ router.get("/predict", (req, res): void => {
       }
     }
 
-    res.json({ type: "3d", mode, predictions: predictions.slice(0, 7), totalDrawsAnalyzed: total });
+    res.json({ type: "3d", mode, excludedNumbers: excludedNums3D, predictions: predictions.slice(0, 7), totalDrawsAnalyzed: total });
   } else {
     // 4D
     const { posFreq, lastSeen } = buildPosFreq(rows);
 
-    const predictions: { number: string; count: number; lastDrawsAgo: number; score: number; reason: string }[] = [];
+    const allCandidates: { number: string; score: number; reason: string }[] = [];
 
     // Strategy 1: hottest digit per position
     const hotDigits = [0, 1, 2, 3].map((p) => {
@@ -303,8 +317,7 @@ router.get("/predict", (req, res): void => {
       return best;
     });
     const hot4D = hotDigits.map(String).join("").padStart(4, "0");
-    const rowFreq = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(hot4D) as { c: number };
-    predictions.push({ number: hot4D, count: rowFreq.c, lastDrawsAgo: 0, score: 88, reason: "🔥 Digit terpanas setiap posisi" });
+    allCandidates.push({ number: hot4D, score: 88, reason: "🔥 Digit terpanas setiap posisi" });
 
     // Strategy 2: most frequent digit per position
     const freqDigits = [0, 1, 2, 3].map((p) => {
@@ -316,11 +329,10 @@ router.get("/predict", (req, res): void => {
     });
     const freq4D = freqDigits.map(String).join("").padStart(4, "0");
     if (freq4D !== hot4D) {
-      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(freq4D) as { c: number };
-      predictions.push({ number: freq4D, count: f.c, lastDrawsAgo: 0, score: 82, reason: "📊 Digit paling sering setiap posisi" });
+      allCandidates.push({ number: freq4D, score: 82, reason: "📊 Digit paling sering setiap posisi" });
     }
 
-    // Strategy 3: overdue — digit not seen recently per position
+    // Strategy 3: overdue
     const overdueDigits = [0, 1, 2, 3].map((p) => {
       let worst = 0, worstSeen = -1;
       for (let d = 0; d < 10; d++) {
@@ -331,27 +343,29 @@ router.get("/predict", (req, res): void => {
       return worst;
     });
     const overdue4D = overdueDigits.map(String).join("").padStart(4, "0");
-    if (!predictions.find((x) => x.number === overdue4D)) {
-      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(overdue4D) as { c: number };
-      predictions.push({ number: overdue4D, count: f.c, lastDrawsAgo: 0, score: 75, reason: "🧊 Digit overdue setiap posisi" });
+    if (!allCandidates.find((x) => x.number === overdue4D)) {
+      allCandidates.push({ number: overdue4D, score: 75, reason: "🧊 Digit overdue setiap posisi" });
     }
 
-    // Strategy 4–7: weighted random picks
-    for (let i = 0; i < 5; i++) {
+    // Strategy 4–8: weighted random picks
+    for (let i = 0; i < 8; i++) {
       const digits = [0, 1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
       const num = digits.map(String).join("").padStart(4, "0");
-      if (!predictions.find((x) => x.number === num)) {
-        const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(num) as { c: number };
-        predictions.push({
-          number: num, count: f.c, lastDrawsAgo: 0,
-          score: Math.round(60 + Math.random() * 20),
-          reason: `${mode === "hot" ? "Hot" : mode === "cold" ? "Cold" : "Balanced"} weighted pick`,
-        });
-        if (predictions.length >= 8) break;
+      if (!allCandidates.find((x) => x.number === num)) {
+        allCandidates.push({ number: num, score: Math.round(60 + Math.random() * 20), reason: "Weighted positional pick" });
       }
     }
 
-    res.json({ type: "4d", mode, predictions: predictions.slice(0, 8), totalDrawsAnalyzed: total });
+    // Separate excluded from valid
+    const excludedNums4D = allCandidates.filter(x => recentSet4D.has(x.number)).slice(0, 5).map(x => x.number);
+    const valid4D = allCandidates.filter(x => !recentSet4D.has(x.number));
+
+    const predictions = valid4D.slice(0, 8).map(x => {
+      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(x.number) as { c: number };
+      return { number: x.number, count: f.c, lastDrawsAgo: 0, score: x.score, reason: x.reason };
+    });
+
+    res.json({ type: "4d", mode, excludedNumbers: excludedNums4D, predictions, totalDrawsAnalyzed: total });
   }
 });
 
