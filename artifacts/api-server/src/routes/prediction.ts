@@ -495,6 +495,149 @@ router.get("/bb-campuran", (req, res): void => {
   });
 });
 
+// ─── /api/accuracy ─────────────────────────────────────────────────────────
+// Backtesting: for each draw (starting from draw #8), simulate prediction
+// using only prior data, check if actual result was in predicted list.
+
+router.get("/accuracy", (_req, res): void => {
+  const allRows = db.prepare(
+    `SELECT * FROM hk4d_results ORDER BY draw_date DESC`
+  ).all() as Row[];
+
+  const MIN_PRIOR = 7; // need at least 7 prior draws to predict
+  if (allRows.length <= MIN_PRIOR) {
+    res.json({ enough: false, message: "Tambahkan minimal 8 draw untuk melihat akurasi." });
+    return;
+  }
+
+  // Helpers (same logic as main endpoints, self-contained for backtesting)
+  function simPosFreq(rows: Row[]) {
+    const posFreq: number[][] = Array.from({ length: 4 }, () => Array(10).fill(0));
+    const lastSeen: number[][] = Array.from({ length: 4 }, () => Array(10).fill(rows.length));
+    rows.forEach((row, idx) => {
+      const s = row.result_4d.padStart(4, "0");
+      for (let p = 0; p < 4; p++) {
+        const d = parseInt(s[p]!);
+        posFreq[p]![d]!++;
+        if (lastSeen[p]![d] === rows.length) lastSeen[p]![d] = idx;
+      }
+    });
+    return { posFreq, lastSeen };
+  }
+
+  function posScore(posFreq: number[][], lastSeen: number[][], total: number, pos: number, digit: number) {
+    const count = posFreq[pos]![digit]!;
+    const seen  = lastSeen[pos]![digit]!;
+    const freqW = count / total;
+    const recentW = 1 / (seen + 1);
+    const overdueW = (seen + 1) / (total + 1);
+    return freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+  }
+
+  // Predict top-N 4D using BB campuran approach
+  function predict4D(prior: Row[], topN: number): string[] {
+    if (prior.length < 3) return [];
+    const total = prior.length;
+    const { posFreq, lastSeen } = simPosFreq(prior);
+    // Auto-select top 5 digits by combined score
+    const digitScore = (d: number) =>
+      [0,1,2,3].reduce((sum, p) => sum + posScore(posFreq, lastSeen, total, p, d), 0);
+    const top5digits = Array.from({ length: 10 }, (_, d) => d)
+      .sort((a, b) => digitScore(b) - digitScore(a))
+      .slice(0, 5);
+    // Generate all combinations
+    const candidates: { num: string; score: number }[] = [];
+    for (const d0 of top5digits) for (const d1 of top5digits)
+      for (const d2 of top5digits) for (const d3 of top5digits) {
+        const num = `${d0}${d1}${d2}${d3}`;
+        const score = posScore(posFreq, lastSeen, total, 0, d0) +
+                      posScore(posFreq, lastSeen, total, 1, d1) +
+                      posScore(posFreq, lastSeen, total, 2, d2) +
+                      posScore(posFreq, lastSeen, total, 3, d3);
+        candidates.push({ num, score });
+      }
+    return candidates.sort((a, b) => b.score - a.score).slice(0, topN).map(c => c.num);
+  }
+
+  // Predict top-N 3D from frequency
+  function predict3D(prior: Row[], topN: number): string[] {
+    if (prior.length < 3) return [];
+    const total = prior.length;
+    const freq: Record<string, { count: number; lastIdx: number }> = {};
+    prior.forEach((row, idx) => {
+      const k = row.result_3d;
+      if (!freq[k]) freq[k] = { count: 0, lastIdx: total };
+      freq[k]!.count++;
+      if (freq[k]!.lastIdx === total) freq[k]!.lastIdx = idx;
+    });
+    return Object.entries(freq)
+      .map(([num, { count, lastIdx }]) => ({
+        num,
+        score: (count / total) * 0.4 + (1 / (lastIdx + 1)) * 0.3 + ((lastIdx + 1) / (total + 1)) * 0.3,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topN)
+      .map(x => x.num);
+  }
+
+  // Predict top-N 2D from frequency
+  function predict2D(prior: Row[], topN: number): string[] {
+    if (prior.length < 3) return [];
+    const total = prior.length;
+    const freq: Record<string, { count: number; lastIdx: number }> = {};
+    prior.forEach((row, idx) => {
+      const k = row.result_2d;
+      if (!freq[k]) freq[k] = { count: 0, lastIdx: total };
+      freq[k]!.count++;
+      if (freq[k]!.lastIdx === total) freq[k]!.lastIdx = idx;
+    });
+    return Object.entries(freq)
+      .map(([num, { count, lastIdx }]) => ({
+        num,
+        score: (count / total) * 0.4 + (1 / (lastIdx + 1)) * 0.3 + ((lastIdx + 1) / (total + 1)) * 0.3,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topN)
+      .map(x => x.num);
+  }
+
+  // Run backtesting
+  const history: { date: string; actual4d: string; actual3d: string; actual2d: string; hit4d: boolean; hit3d: boolean; hit2d: boolean }[] = [];
+  let hits4d = 0, hits3d = 0, hits2d = 0, total = 0;
+
+  for (let i = 0; i < allRows.length - MIN_PRIOR; i++) {
+    const testRow = allRows[i]!;
+    const prior = allRows.slice(i + 1); // older draws
+    const pred4d = predict4D(prior, 10);
+    const pred3d = predict3D(prior, 7);
+    const pred2d = predict2D(prior, 8);
+    const a4d = testRow.result_4d.padStart(4, "0");
+    const a3d = a4d.slice(1);
+    const a2d = a4d.slice(2);
+    const h4d = pred4d.includes(a4d);
+    const h3d = pred3d.includes(a3d);
+    const h2d = pred2d.includes(a2d);
+    if (h4d) hits4d++;
+    if (h3d) hits3d++;
+    if (h2d) hits2d++;
+    total++;
+    history.push({ date: testRow.draw_date, actual4d: a4d, actual3d: a3d, actual2d: a2d, hit4d: h4d, hit3d: h3d, hit2d: h2d });
+  }
+
+  const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
+
+  res.json({
+    enough: true,
+    totalTested: total,
+    winrate: {
+      "4d": { hits: hits4d, total, pct: pct(hits4d) },
+      "3d": { hits: hits3d, total, pct: pct(hits3d) },
+      "2d": { hits: hits2d, total, pct: pct(hits2d) },
+    },
+    history: history.slice(0, 20), // last 20 draws
+  });
+});
+
 // ─── /api/history-chart ────────────────────────────────────────────────────
 
 router.get("/history-chart", (req, res) => {

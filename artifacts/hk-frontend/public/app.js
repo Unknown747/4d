@@ -110,7 +110,7 @@ function showPage(id) {
   if (id === 'analisis' && statsCache) renderAnalysis(statsCache);
   if (id === 'analisis' && !statsCache) loadStats().then(() => renderAnalysis(statsCache));
   if (id === 'history') { historyPage = 0; loadHistory(); }
-  if (id === 'prediksi') loadPredictions();
+  if (id === 'prediksi') { loadAccuracy(); loadPredictions(); }
   if (id === 'bb') generateBB();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -256,6 +256,79 @@ async function refreshQuickPredict() {
     span.textContent = e.message;
     el.innerHTML = '';
     el.appendChild(span);
+  }
+}
+
+// ─── Accuracy / Winrate ────────────────────────────────────────
+
+async function loadAccuracy() {
+  const statsEl = document.getElementById('winrate-stats');
+  const histEl  = document.getElementById('winrate-history');
+  const testedEl = document.getElementById('winrate-tested');
+  if (!statsEl) return;
+
+  try {
+    const data = await api('/accuracy');
+
+    if (!data.enough) {
+      statsEl.innerHTML = `<p class="text-muted" style="font-size:13px;padding:0.5rem 0;">${escapeHtml(data.message)}</p>`;
+      if (histEl) histEl.innerHTML = '';
+      return;
+    }
+
+    if (testedEl) testedEl.textContent = `${data.totalTested} draw diuji`;
+
+    // Winrate badges
+    const wr = data.winrate;
+    const badge = (label, type, obj) => {
+      const color = obj.pct >= 50 ? '#22c55e' : obj.pct >= 25 ? '#f59e0b' : '#ef4444';
+      const ring  = obj.pct >= 50 ? 'green'  : obj.pct >= 25 ? 'yellow' : 'red';
+      return `
+        <div class="wr-badge wr-${ring}">
+          <div class="wr-type">${label}</div>
+          <div class="wr-pct" style="color:${color}">${obj.pct}%</div>
+          <div class="wr-detail">${obj.hits} / ${obj.total} tembus</div>
+          <div class="wr-sub">Top ${type === '4d' ? 10 : type === '3d' ? 7 : 8} prediksi</div>
+        </div>`;
+    };
+
+    statsEl.innerHTML = `
+      <div class="wr-badges">
+        ${badge('🎲 4D', '4d', wr['4d'])}
+        ${badge('🎯 3D', '3d', wr['3d'])}
+        ${badge('⚡ 2D', '2d', wr['2d'])}
+      </div>
+      <div class="wr-note">Backtesting: setiap draw diuji terhadap prediksi yang dibuat dari data sebelumnya saja.</div>`;
+
+    // History table
+    if (histEl && data.history) {
+      histEl.innerHTML = `
+        <div class="wr-hist-wrap">
+          <table class="wr-hist-table">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Hasil</th>
+                <th>4D</th>
+                <th>3D</th>
+                <th>2D</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.history.map(h => `
+                <tr>
+                  <td class="wr-date">${escapeHtml(h.date)}</td>
+                  <td class="wr-actual mono">${escapeHtml(h.actual4d)}</td>
+                  <td>${h.hit4d ? '<span class="wr-hit">✓</span>' : '<span class="wr-miss">✗</span>'}</td>
+                  <td>${h.hit3d ? '<span class="wr-hit">✓</span>' : '<span class="wr-miss">✗</span>'}</td>
+                  <td>${h.hit2d ? '<span class="wr-hit">✓</span>' : '<span class="wr-miss">✗</span>'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+  } catch(e) {
+    if (statsEl) statsEl.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">❌ ${escapeHtml(e.message)}</p>`;
   }
 }
 
