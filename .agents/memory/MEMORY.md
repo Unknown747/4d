@@ -1,1 +1,2 @@
 - [HK Toto Pro Architecture](hk-toto-arch.md) — SQLite hk4d_results table (no Mark Six); derive 3D=slice(1), 2D=slice(2) from padded 4D string.
+- [better-sqlite3 native rebuild](better-sqlite3-rebuild.md) — binary disappears after env reset; auto-rebuild script at artifacts/api-server/scripts/ensure-native.mjs runs in dev startup.

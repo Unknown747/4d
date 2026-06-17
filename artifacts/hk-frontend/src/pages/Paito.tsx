@@ -7,11 +7,11 @@ type Period = typeof PERIODS[number];
 type PosFilter = 'all' | 'as' | 'kop' | 'kepala' | 'ekor';
 
 const POS_OPTIONS: { id: PosFilter; label: string; desc: string }[] = [
-  { id: 'all',    label: 'Semua',  desc: '2D (KEPALA+EKOR)' },
+  { id: 'all',    label: 'Semua',  desc: '2D standar (digit 3+4)' },
   { id: 'as',     label: 'AS',     desc: 'AS+KOP (digit 1+2)' },
   { id: 'kop',    label: 'KOP',    desc: 'KOP+KEPALA (digit 2+3)' },
-  { id: 'kepala', label: 'KEPALA', desc: 'KEPALA+EKOR (digit 3+4)' },
-  { id: 'ekor',   label: 'EKOR',   desc: 'digit terakhir (0x–9x)' },
+  { id: 'kepala', label: 'KEPALA', desc: 'AS+KEPALA (digit 1+3)' },
+  { id: 'ekor',   label: 'EKOR',   desc: 'KOP+EKOR (digit 2+4)' },
 ];
 
 function getColor(freq: number, max: number): string {
@@ -29,8 +29,8 @@ function extract2D(s4d: string, pos: PosFilter): string {
   switch (pos) {
     case 'as':     return s4d.slice(0, 2);
     case 'kop':    return s4d.slice(1, 3);
-    case 'kepala': return s4d.slice(2, 4);
-    case 'ekor':   return s4d.slice(2, 4);
+    case 'kepala': return s4d[0]! + s4d[2]!;  // AS + KEPALA
+    case 'ekor':   return s4d[1]! + s4d[3]!;  // KOP + EKOR
     default:       return s4d.slice(2, 4); // "all" = standard 2D (KEPALA+EKOR)
   }
 }

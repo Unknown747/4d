@@ -101,6 +101,49 @@ function getShio(twoD: string) {
   return SHIO_MAP[twoD.padStart(2, "0")] ?? { name: "?", emoji: "❓" };
 }
 
+// ─── Shared signal helpers ──────────────────────────────────────────────────
+
+function buildShioSignals(rows: Row[], total: number) {
+  const shioFreq: Record<string, { count: number; lastIdx: number }> = {};
+  rows.forEach((row, idx) => {
+    const k = getShio(row.result_4d.padStart(4, "0").slice(2)).name;
+    if (!shioFreq[k]) shioFreq[k] = { count: 0, lastIdx: total };
+    shioFreq[k]!.count++;
+    if (shioFreq[k]!.lastIdx === total) shioFreq[k]!.lastIdx = idx;
+  });
+  const topShios = Object.entries(shioFreq)
+    .map(([name, { count, lastIdx }]) => ({
+      name,
+      score: (count / total) * 0.35 + (1 / (lastIdx + 1)) * 0.3 + ((lastIdx + 1) / (total + 1)) * 0.35,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(s => s.name);
+  const shio2Ds = new Set<string>();
+  for (const s of SHIO_DEF) {
+    if (topShios.includes(s.name)) {
+      for (const n of s.nums) shio2Ds.add(String(n).padStart(2, "0"));
+    }
+  }
+  return { topShios, shio2Ds };
+}
+
+function buildPolaSignals(rows: Row[]) {
+  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
+  for (let i = 0; i < rows.length - 1; i++) {
+    const pE = parseInt(rows[i + 1]!.result_4d.padStart(4, "0")[3]!);
+    const cE = parseInt(rows[i]!.result_4d.padStart(4, "0")[3]!);
+    ekorTrans[pE]![cE]!++;
+  }
+  const lastEkor = parseInt(rows[0]!.result_4d.padStart(4, "0")[3]!);
+  const goodNextEkors = new Set(
+    Array.from({ length: 10 }, (_, d) => d)
+      .sort((a, b) => ekorTrans[lastEkor]![b]! - ekorTrans[lastEkor]![a]!)
+      .slice(0, 3)
+  );
+  return { goodNextEkors };
+}
+
 // ─── /api/stats ────────────────────────────────────────────────────────────
 
 router.get("/stats", (req, res): void => {
@@ -600,39 +643,9 @@ router.get("/angka-fix", (_req, res): void => {
   const total = rows.length;
   const { posFreq, lastSeen } = buildPosFreq(rows);
 
-  // ── Shio signal ──
-  const shioFreq: Record<string, { count: number; lastIdx: number }> = {};
-  rows.forEach((row, idx) => {
-    const k = getShio(row.result_4d.padStart(4,"0").slice(2)).name;
-    if (!shioFreq[k]) shioFreq[k] = { count: 0, lastIdx: total };
-    shioFreq[k]!.count++;
-    if (shioFreq[k]!.lastIdx === total) shioFreq[k]!.lastIdx = idx;
-  });
-  const topShios = Object.entries(shioFreq)
-    .map(([name, { count, lastIdx }]) => ({
-      name, score: (count/total)*0.35 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.35,
-    })).sort((a, b) => b.score - a.score).slice(0, 3).map(s => s.name);
-
-  const shio2Ds = new Set<string>();
-  for (const s of SHIO_DEF) {
-    if (topShios.includes(s.name)) {
-      for (const n of s.nums) shio2Ds.add(String(n).padStart(2, "0"));
-    }
-  }
-
-  // ── Pola Ikutan signal (ekor transition) ──
-  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
-  for (let i = 0; i < rows.length - 1; i++) {
-    const pE = parseInt(rows[i+1]!.result_4d.padStart(4,"0")[3]!);
-    const cE = parseInt(rows[i]!.result_4d.padStart(4,"0")[3]!);
-    ekorTrans[pE]![cE]!++;
-  }
-  const lastEkor = parseInt(rows[0]!.result_4d.padStart(4,"0")[3]!);
-  const goodNextEkors = new Set(
-    Array.from({ length: 10 }, (_, d) => d)
-      .sort((a, b) => ekorTrans[lastEkor]![b]! - ekorTrans[lastEkor]![a]!)
-      .slice(0, 3)
-  );
+  // ── Signals ──
+  const { topShios, shio2Ds } = buildShioSignals(rows, total);
+  const { goodNextEkors } = buildPolaSignals(rows);
 
   // ── Positional score ──
   function ps(pos: number, digit: number) {
@@ -653,8 +666,6 @@ router.get("/angka-fix", (_req, res): void => {
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
     if (excluded4D.has(num)) continue;
-    // Hindari angka kembar — semua digit harus unik
-    if (new Set([d0,d1,d2,d3]).size < 4) continue;
     // Hindari 3D/2D yang muncul di draw terakhir
     if (excluded3D_recent.has(num.slice(1))) continue;
     if (excluded2D_recent.has(num.slice(2))) continue;
@@ -718,39 +729,9 @@ router.get("/rekomendasi", (_req, res): void => {
   const total = rows.length;
   const { posFreq, lastSeen } = buildPosFreq(rows);
 
-  // ── Shio signal ──
-  const shioFreq: Record<string, { count: number; lastIdx: number }> = {};
-  rows.forEach((row, idx) => {
-    const k = getShio(row.result_4d.padStart(4,"0").slice(2)).name;
-    if (!shioFreq[k]) shioFreq[k] = { count: 0, lastIdx: total };
-    shioFreq[k]!.count++;
-    if (shioFreq[k]!.lastIdx === total) shioFreq[k]!.lastIdx = idx;
-  });
-  const topShios = Object.entries(shioFreq)
-    .map(([name, { count, lastIdx }]) => ({
-      name, score: (count/total)*0.35 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.35,
-    })).sort((a, b) => b.score - a.score).slice(0, 3).map(s => s.name);
-
-  const shio2Ds = new Set<string>();
-  for (const s of SHIO_DEF) {
-    if (topShios.includes(s.name)) {
-      for (const n of s.nums) shio2Ds.add(String(n).padStart(2, "0"));
-    }
-  }
-
-  // ── Pola Ikutan signal ──
-  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
-  for (let i = 0; i < rows.length - 1; i++) {
-    const pE = parseInt(rows[i+1]!.result_4d.padStart(4,"0")[3]!);
-    const cE = parseInt(rows[i]!.result_4d.padStart(4,"0")[3]!);
-    ekorTrans[pE]![cE]!++;
-  }
-  const lastEkor = parseInt(rows[0]!.result_4d.padStart(4,"0")[3]!);
-  const goodNextEkors = new Set(
-    Array.from({ length: 10 }, (_, d) => d)
-      .sort((a, b) => ekorTrans[lastEkor]![b]! - ekorTrans[lastEkor]![a]!)
-      .slice(0, 3)
-  );
+  // ── Signals ──
+  const { topShios, shio2Ds } = buildShioSignals(rows, total);
+  const { goodNextEkors } = buildPolaSignals(rows);
 
   // ── Positional score ──
   function ps(pos: number, digit: number) {
@@ -775,8 +756,6 @@ router.get("/rekomendasi", (_req, res): void => {
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
     if (excluded4D.has(num)) continue;
-    // Hindari angka kembar — semua digit harus unik
-    if (new Set([d0,d1,d2,d3]).size < 4) continue;
     // Hindari 3D/2D yang muncul di draw terakhir
     if (excluded3D_recent.has(num.slice(1))) continue;
     if (excluded2D_recent.has(num.slice(2))) continue;

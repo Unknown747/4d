@@ -13,7 +13,7 @@ function WinrateCard({ label, data }: { label: string; data: { hits: number; tot
       <div className="bg-slate-700 rounded-full h-2 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-1000"
-          style={{ width: `${Math.min(data.pct * 2, 100)}%`, background: color }}
+          style={{ width: `${data.pct}%`, background: color }}
         />
       </div>
     </div>

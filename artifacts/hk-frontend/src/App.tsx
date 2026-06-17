@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from './components/Toast';
 import Dashboard from './pages/Dashboard';
@@ -31,6 +31,12 @@ type TabId = typeof TABS[number]['id'];
 
 function AppInner() {
   const [tab, setTab] = useState<TabId>('dashboard');
+  const navRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const btn = navRef.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    btn?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [tab]);
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] text-slate-200 font-sans">
@@ -41,10 +47,11 @@ function AppInner() {
           <span className="text-xs bg-emerald-500 text-emerald-950 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Live</span>
         </div>
 
-        <div className="flex items-center gap-0.5 bg-[#1a2235] rounded-lg p-1 overflow-x-auto scrollbar-hide">
+        <div ref={navRef} className="flex items-center gap-0.5 bg-[#1a2235] rounded-lg p-1 overflow-x-auto scrollbar-hide">
           {TABS.map(t => (
             <button
               key={t.id}
+              data-tab={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                 tab === t.id

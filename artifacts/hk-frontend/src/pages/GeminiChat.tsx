@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchApi } from '../lib/api';
 import { useToast } from '../components/Toast';
 
@@ -31,6 +32,11 @@ const QUICK_BUTTONS = [
 
 export default function GeminiChat() {
   const { toast } = useToast();
+  const { data: geminiStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ['gemini-status'],
+    queryFn: () => fetchApi<{ configured: boolean }>('/gemini/status'),
+    staleTime: 60_000,
+  });
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -110,6 +116,18 @@ export default function GeminiChat() {
 
   return (
     <div className="space-y-4">
+      {geminiStatus && !geminiStatus.configured && (
+        <div className="p-3 bg-orange-900/30 border border-orange-700/50 rounded-xl text-sm text-orange-300 flex items-start gap-2">
+          <span className="text-lg shrink-0">⚠️</span>
+          <div>
+            <strong>Gemini API Key belum dikonfigurasi.</strong>{' '}
+            Set environment variable{' '}
+            <code className="bg-orange-900/40 px-1.5 py-0.5 rounded text-xs font-mono">GEMINI_API_KEY</code>{' '}
+            agar fitur AI Chat dapat digunakan.
+          </div>
+        </div>
+      )}
+
       {/* Validate Panel */}
       <div className="card">
         <div className="card-header">✅ Validasi Angka dengan AI</div>

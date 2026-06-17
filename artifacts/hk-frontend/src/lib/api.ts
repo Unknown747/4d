@@ -120,3 +120,20 @@ export interface ResultsData {
   total: number;
   data: Row[];
 }
+
+export interface BBCampuranData {
+  autoMode: boolean;
+  activeDigits: number[];
+  autoSelectedInfo: { digit: number; score: number }[];
+  totalCombinations: number;
+  excludedCount: number;
+  excludedNumbers: string[];
+  predictions: {
+    number: string;
+    result3d: string;
+    result2d: string;
+    score: number;
+    reason: string;
+  }[];
+  totalDrawsAnalyzed: number;
+}

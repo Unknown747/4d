@@ -200,6 +200,11 @@ Asisten:`;
   }
 });
 
+// ─── GET /api/gemini/status ──────────────────────────────────────────────────
+router.get("/status", (_req, res): void => {
+  res.json({ configured: Boolean(GEMINI_API_KEY) });
+});
+
 // ─── GET /api/gemini/history ─────────────────────────────────────────────────
 router.get("/history", (_req, res): void => {
   try {
