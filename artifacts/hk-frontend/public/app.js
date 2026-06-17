@@ -92,6 +92,7 @@ function showPage(id) {
   if (id === 'analisis' && !statsCache) loadStats().then(() => renderAnalysis(statsCache));
   if (id === 'history') { historyPage = 0; loadHistory(); }
   if (id === 'prediksi') loadPredictions();
+  if (id === 'bb') generateBB();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -540,76 +541,33 @@ async function submitResult(e) {
 
 // ─── BB Campuran ───────────────────────────────────────────────
 
-let bbActiveDigits = new Set();
 let bbMode = 'hot';
-
-function initBBDigitGrid() {
-  const grid = document.getElementById('bb-digit-grid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  for (let d = 0; d <= 9; d++) {
-    const btn = document.createElement('button');
-    btn.className = 'bb-digit-btn';
-    btn.textContent = d;
-    btn.dataset.digit = d;
-    btn.onclick = () => toggleBBDigit(d, btn);
-    grid.appendChild(btn);
-  }
-}
-
-function toggleBBDigit(digit, btn) {
-  if (bbActiveDigits.has(digit)) {
-    bbActiveDigits.delete(digit);
-    btn.classList.remove('active');
-    btn.classList.add('dead');
-  } else {
-    bbActiveDigits.add(digit);
-    btn.classList.remove('dead');
-    btn.classList.add('active');
-  }
-  updateBBSummary();
-}
-
-function updateBBSummary() {
-  const el = document.getElementById('bb-selected-text');
-  if (!el) return;
-  const sorted = [...bbActiveDigits].sort((a, b) => a - b);
-  if (sorted.length === 0) {
-    el.innerHTML = 'Pilih digit di atas';
-    return;
-  }
-  const dead = [0,1,2,3,4,5,6,7,8,9].filter(d => !bbActiveDigits.has(d));
-  const n = sorted.length;
-  const combos = n * n * n * n;
-  el.innerHTML = `Digit aktif: <strong>${sorted.join(' ')}</strong> &nbsp;·&nbsp; Mati: <strong style="color:var(--text-muted)">${dead.length > 0 ? dead.join(' ') : '—'}</strong> &nbsp;·&nbsp; ${combos} kombinasi 4D`;
-}
+let bbManualDigits = new Set();
+let bbOverrideOpen = false;
 
 function setBBMode(btn, mode) {
   bbMode = mode;
   document.querySelectorAll('#page-bb .mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  generateBB();
 }
 
-async function generateBB() {
-  const sorted = [...bbActiveDigits].sort((a, b) => a - b);
-  if (sorted.length < 2) {
-    toast('Pilih minimal 2 digit aktif', 'error');
-    return;
+// Render BB results into the list
+function renderBBResults(data) {
+  const digitsRow = document.getElementById('bb-auto-digits-row');
+  const combosEl = document.getElementById('bb-auto-combos');
+  const resultList = document.getElementById('bb-results-list');
+
+  if (digitsRow) {
+    digitsRow.innerHTML = data.activeDigits.map(d =>
+      `<div class="bb-auto-digit-chip">${d}</div>`
+    ).join('');
+  }
+  if (combosEl) {
+    combosEl.textContent = `${data.totalCombinations} kombinasi · ${data.totalDrawsAnalyzed} draw`;
   }
 
-  const resultCard = document.getElementById('bb-result-card');
-  const resultList = document.getElementById('bb-results-list');
-  resultCard.style.display = 'block';
-  resultList.innerHTML = '<div class="loading-spinner" style="margin:1rem auto;"></div>';
-
-  try {
-    const data = await api(`/bb-campuran?digits=${sorted.join('')}&mode=${bbMode}`);
-
-    document.getElementById('bb-result-title').textContent =
-      `🏆 Top 10 — Digit [${data.activeDigits.join(' ')}] — Mode ${bbMode}`;
-    document.getElementById('bb-combinations-info').textContent =
-      `${data.totalCombinations} kombinasi dianalisis`;
-
+  if (resultList) {
     resultList.innerHTML = data.predictions.map((p, i) =>
       `<div class="bb-result-item">
         <div class="bb-rank">#${i + 1}</div>
@@ -626,15 +584,125 @@ async function generateBB() {
         </div>
       </div>`
     ).join('');
+  }
+}
 
-    resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+// Auto-mode: let server pick digits
+async function generateBB() {
+  const resultList = document.getElementById('bb-results-list');
+  const digitsRow = document.getElementById('bb-auto-digits-row');
+  if (resultList) resultList.innerHTML = '<div class="loading-spinner" style="margin:1.5rem auto;"></div>';
+  if (digitsRow) digitsRow.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;"></div>';
+
+  try {
+    const data = await api(`/bb-campuran?mode=${bbMode}`);
+    renderBBResults(data);
+
+    // Sync manual digit grid to show what auto picked
+    syncManualGridToDigits(data.activeDigits);
   } catch (e) {
-    resultList.innerHTML = '';
-    const div = document.createElement('div');
-    div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;text-align:center;';
-    div.textContent = '❌ ' + e.message;
-    resultList.appendChild(div);
+    if (resultList) {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;text-align:center;';
+      div.textContent = '❌ ' + e.message;
+      resultList.innerHTML = '';
+      resultList.appendChild(div);
+    }
     toast(e.message, 'error');
+  }
+}
+
+// Manual-override: use user-selected digits
+async function generateBBManual() {
+  const sorted = [...bbManualDigits].sort((a, b) => a - b);
+  if (sorted.length < 2) {
+    toast('Pilih minimal 2 digit aktif', 'error');
+    return;
+  }
+
+  const resultList = document.getElementById('bb-results-list');
+  const digitsRow = document.getElementById('bb-auto-digits-row');
+  if (resultList) resultList.innerHTML = '<div class="loading-spinner" style="margin:1.5rem auto;"></div>';
+  if (digitsRow) digitsRow.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;"></div>';
+
+  try {
+    const data = await api(`/bb-campuran?digits=${sorted.join('')}&mode=${bbMode}`);
+    renderBBResults(data);
+  } catch (e) {
+    if (resultList) {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;text-align:center;';
+      div.textContent = '❌ ' + e.message;
+      resultList.innerHTML = '';
+      resultList.appendChild(div);
+    }
+    toast(e.message, 'error');
+  }
+}
+
+function resetBBToAuto() {
+  generateBB();
+}
+
+// Sync the manual digit grid buttons to reflect a given list of active digits
+function syncManualGridToDigits(activeList) {
+  bbManualDigits = new Set(activeList);
+  document.querySelectorAll('.bb-digit-btn').forEach(btn => {
+    const d = parseInt(btn.dataset.digit);
+    if (bbManualDigits.has(d)) {
+      btn.classList.add('active');
+      btn.classList.remove('dead');
+    } else {
+      btn.classList.remove('active');
+      btn.classList.add('dead');
+    }
+  });
+  updateBBManualSummary();
+}
+
+function toggleBBDigit(digit, btn) {
+  if (bbManualDigits.has(digit)) {
+    bbManualDigits.delete(digit);
+    btn.classList.remove('active');
+    btn.classList.add('dead');
+  } else {
+    bbManualDigits.add(digit);
+    btn.classList.remove('dead');
+    btn.classList.add('active');
+  }
+  updateBBManualSummary();
+}
+
+function updateBBManualSummary() {
+  const el = document.getElementById('bb-selected-text');
+  if (!el) return;
+  const sorted = [...bbManualDigits].sort((a, b) => a - b);
+  if (sorted.length === 0) {
+    el.textContent = 'Belum ada digit dipilih';
+    return;
+  }
+  const dead = [0,1,2,3,4,5,6,7,8,9].filter(d => !bbManualDigits.has(d));
+  const n = sorted.length;
+  el.innerHTML = `Aktif: <strong>${sorted.join(' ')}</strong> &nbsp;·&nbsp; Mati: ${dead.join(' ')||'—'} &nbsp;·&nbsp; ${n*n*n*n} kombinasi`;
+}
+
+function toggleBBOverride() {
+  bbOverrideOpen = !bbOverrideOpen;
+  document.getElementById('bb-override-panel').style.display = bbOverrideOpen ? 'block' : 'none';
+  document.getElementById('bb-override-toggle-label').textContent = bbOverrideOpen ? 'Tutup ▲' : 'Buka ▼';
+}
+
+function initBBDigitGrid() {
+  const grid = document.getElementById('bb-digit-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let d = 0; d <= 9; d++) {
+    const btn = document.createElement('button');
+    btn.className = 'bb-digit-btn';
+    btn.textContent = d;
+    btn.dataset.digit = d;
+    btn.onclick = () => toggleBBDigit(d, btn);
+    grid.appendChild(btn);
   }
 }
 

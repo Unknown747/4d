@@ -362,18 +362,7 @@ router.get("/predict", (req, res): void => {
 router.get("/bb-campuran", (req, res): void => {
   const rawDigits = (req.query["digits"] as string) ?? "";
   const mode = (req.query["mode"] as string) ?? "hot";
-
-  // Parse & validate active digits
-  const activeDigits = [...new Set(rawDigits.replace(/\D/g, "").split("").map(Number))].sort((a, b) => a - b);
-
-  if (activeDigits.length < 2) {
-    res.status(400).json({ error: "Pilih minimal 2 digit aktif." });
-    return;
-  }
-  if (activeDigits.length > 9) {
-    res.status(400).json({ error: "Maksimal 9 digit aktif." });
-    return;
-  }
+  const autoMode = !rawDigits || rawDigits.trim() === "";
 
   const rows = db.prepare(
     `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`
@@ -397,6 +386,32 @@ router.get("/bb-campuran", (req, res): void => {
     if (mode === "hot")     return freqW * 0.4 + recentW * 0.6;
     if (mode === "cold")    return (1 - freqW) * 0.5 + overdueW * 0.5;
     return freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+  }
+
+  // Combined score of a digit across ALL 4 positions (used for auto-select)
+  function digitTotalScore(digit: number): number {
+    return posScore(0, digit) + posScore(1, digit) + posScore(2, digit) + posScore(3, digit);
+  }
+
+  let activeDigits: number[];
+  let autoSelectedInfo: { digit: number; score: number }[] = [];
+
+  if (autoMode) {
+    // Auto-select top 5 digits by combined positional score
+    const ranked = Array.from({ length: 10 }, (_, d) => ({ digit: d, score: digitTotalScore(d) }))
+      .sort((a, b) => b.score - a.score);
+    autoSelectedInfo = ranked.slice(0, 5);
+    activeDigits = autoSelectedInfo.map(x => x.digit).sort((a, b) => a - b);
+  } else {
+    activeDigits = [...new Set(rawDigits.replace(/\D/g, "").split("").map(Number))].sort((a, b) => a - b);
+    if (activeDigits.length < 2) {
+      res.status(400).json({ error: "Pilih minimal 2 digit aktif." });
+      return;
+    }
+    if (activeDigits.length > 9) {
+      res.status(400).json({ error: "Maksimal 9 digit aktif." });
+      return;
+    }
   }
 
   // Generate all combinations (with repetition): activeDigits^4
@@ -444,7 +459,9 @@ router.get("/bb-campuran", (req, res): void => {
   });
 
   res.json({
+    autoMode,
     activeDigits,
+    autoSelectedInfo,
     mode,
     totalCombinations,
     predictions,

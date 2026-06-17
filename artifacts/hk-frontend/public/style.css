@@ -882,6 +882,57 @@ tr:last-child td { border-bottom: none; }
   font-family: 'JetBrains Mono', monospace;
 }
 
+/* Auto banner */
+.bb-auto-banner {
+  background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(59,130,246,0.08));
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bb-auto-banner-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bb-auto-digits-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.bb-auto-digit-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245,158,11,0.18);
+  color: var(--accent);
+  border: 1px solid rgba(245,158,11,0.4);
+}
+
+.bb-auto-combos {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 /* BB Result Cards */
 .bb-results {
   display: flex;

@@ -296,54 +296,54 @@
   <!-- ===== BB CAMPURAN ===== -->
   <div id="page-bb" class="page">
 
-    <!-- Digit Selector -->
-    <div class="card section-gap">
+    <!-- Auto Results (primary) -->
+    <div class="card section-gap" id="bb-auto-card">
       <div class="card-header">
-        <span class="card-title">🎰 BB Campuran — Filter Digit Aktif</span>
-      </div>
-      <p class="bb-desc">Pilih digit yang diprediksi akan keluar. Sistem akan generate semua kombinasi 4D dari digit tersebut dan ranking berdasarkan analisis posisional.</p>
-
-      <div class="bb-digit-grid" id="bb-digit-grid">
-        <!-- digits 0-9 rendered by JS -->
-      </div>
-
-      <div class="bb-selected-summary" id="bb-selected-summary">
-        <span id="bb-selected-text">Pilih digit di atas</span>
-      </div>
-
-      <div class="mode-selector" style="margin-top:0.75rem;">
-        <button class="mode-btn active" onclick="setBBMode(this,'hot')">🔥 Hot</button>
-        <button class="mode-btn" onclick="setBBMode(this,'cold')">🧊 Cold</button>
-        <button class="mode-btn" onclick="setBBMode(this,'balanced')">⚖️ Balanced</button>
-      </div>
-
-      <button class="btn btn-primary btn-full" style="margin-top:0.75rem;" onclick="generateBB()">🔢 Generate Top 10</button>
-    </div>
-
-    <!-- Results -->
-    <div class="card section-gap" id="bb-result-card" style="display:none;">
-      <div class="card-header">
-        <span class="card-title" id="bb-result-title">🏆 Top 10 4D BB Campuran</span>
-        <span class="text-xs text-muted" id="bb-combinations-info">—</span>
-      </div>
-      <div id="bb-results-list" class="bb-results"></div>
-    </div>
-
-    <!-- Guide -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">📖 Cara Pakai BB Campuran</span>
-      </div>
-      <div class="guide-text">
-        <p>Misal prediksi digit aktif: <strong class="mono">0 1 2 3 4</strong></p>
-        <p style="margin-top:0.5rem;">Dari 5 digit tersebut, sistem akan menganalisis <strong>5⁴ = 625</strong> kombinasi 4D yang mungkin, lalu pilih <strong>10 terbaik</strong> berdasarkan frekuensi historis tiap posisi (AS, KOP, KEPALA, EKOR).</p>
-        <p style="margin-top:0.5rem;">Nomor 3D dan 2D otomatis mengikuti 4D yang dipilih.</p>
-        <p style="margin-top:0.5rem; font-size:12px; color:var(--text-muted);">Contoh: 4D = <span class="mono">0123</span> → 3D: <span class="mono">123</span> · 2D: <span class="mono">23</span></p>
-        <div class="disclaimer-box" style="margin-top:0.75rem;">
-          <strong>DISCLAIMER</strong>
-          <p>Prediksi bersifat statistik & edukatif. Tidak ada jaminan kemenangan. Gunakan dengan bijak.</p>
+        <span class="card-title">🤖 BB Campuran — Otomatis</span>
+        <div class="mode-selector" style="gap:4px;">
+          <button class="mode-btn active" id="bb-mode-hot" onclick="setBBMode(this,'hot')">🔥</button>
+          <button class="mode-btn" id="bb-mode-cold" onclick="setBBMode(this,'cold')">🧊</button>
+          <button class="mode-btn" id="bb-mode-balanced" onclick="setBBMode(this,'balanced')">⚖️</button>
         </div>
       </div>
+
+      <!-- Auto digit info banner -->
+      <div class="bb-auto-banner" id="bb-auto-banner">
+        <div class="bb-auto-banner-label">Digit aktif (auto)</div>
+        <div id="bb-auto-digits-row" class="bb-auto-digits-row">
+          <div class="loading-spinner" style="width:16px;height:16px;"></div>
+        </div>
+        <div id="bb-auto-combos" class="bb-auto-combos">—</div>
+      </div>
+
+      <!-- Results list -->
+      <div id="bb-results-list" class="bb-results">
+        <div class="loading-spinner" style="margin:1.5rem auto;"></div>
+      </div>
+
+      <button class="btn btn-ghost btn-full mt-1" style="font-size:12px;" onclick="generateBB()">🔄 Refresh Otomatis</button>
+    </div>
+
+    <!-- Manual Override (secondary, collapsible) -->
+    <div class="card section-gap">
+      <div class="card-header" style="cursor:pointer;" onclick="toggleBBOverride()">
+        <span class="card-title">✏️ Override Manual Digit</span>
+        <span class="text-xs text-muted" id="bb-override-toggle-label">Buka ▼</span>
+      </div>
+      <div id="bb-override-panel" style="display:none; margin-top:0.75rem;">
+        <p class="bb-desc">Klik digit untuk aktifkan/matikan. Tekan Generate untuk hitung ulang.</p>
+        <div class="bb-digit-grid" id="bb-digit-grid"></div>
+        <div class="bb-selected-summary">
+          <span id="bb-selected-text">Pilih digit di atas</span>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:0.75rem;" onclick="generateBBManual()">🔢 Generate dari Pilihan Saya</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:0.5rem; font-size:12px;" onclick="resetBBToAuto()">↩ Kembali ke Mode Otomatis</button>
+      </div>
+    </div>
+
+    <div class="disclaimer-box" style="margin:0 0 1rem;">
+      <strong>DISCLAIMER</strong>
+      <p>Prediksi bersifat statistik & edukatif. Tidak ada jaminan kemenangan. Gunakan dengan bijak.</p>
     </div>
 
   </div>
