@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from './components/Toast';
 import Dashboard from './pages/Dashboard';
 import AngkaFix from './pages/AngkaFix';
 import Shio from './pages/Shio';
@@ -16,14 +17,14 @@ const queryClient = new QueryClient({
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { id: 'prediksi', label: 'Prediksi', icon: '🎯' },
-  { id: 'paito', label: 'Paito', icon: '🎨' },
-  { id: 'gemini', label: 'AI Chat', icon: '🤖' },
-  { id: 'fix', label: 'Angka Fix', icon: '⭐' },
-  { id: 'shio', label: 'Shio', icon: '🐉' },
-  { id: 'pola', label: 'Pola', icon: '🔗' },
-  { id: 'backtest', label: 'Akurasi', icon: '📈' },
-  { id: 'history', label: 'History', icon: '📋' },
+  { id: 'prediksi',  label: 'Prediksi',  icon: '🎯' },
+  { id: 'paito',     label: 'Paito',     icon: '🎨' },
+  { id: 'gemini',    label: 'AI Chat',   icon: '🤖' },
+  { id: 'fix',       label: 'Angka Fix', icon: '⭐' },
+  { id: 'shio',      label: 'Shio',      icon: '🐉' },
+  { id: 'pola',      label: 'Pola',      icon: '🔗' },
+  { id: 'backtest',  label: 'Akurasi',   icon: '📈' },
+  { id: 'history',   label: 'History',   icon: '📋' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -60,14 +61,14 @@ function AppInner() {
 
       <main className="max-w-5xl mx-auto px-4 py-5">
         {tab === 'dashboard' && <Dashboard />}
-        {tab === 'prediksi' && <Prediksi />}
-        {tab === 'paito' && <Paito />}
-        {tab === 'gemini' && <GeminiChat />}
-        {tab === 'fix' && <AngkaFix />}
-        {tab === 'shio' && <Shio />}
-        {tab === 'pola' && <PolaIkutan />}
-        {tab === 'backtest' && <Backtesting />}
-        {tab === 'history' && <History />}
+        {tab === 'prediksi'  && <Prediksi />}
+        {tab === 'paito'     && <Paito />}
+        {tab === 'gemini'    && <GeminiChat />}
+        {tab === 'fix'       && <AngkaFix />}
+        {tab === 'shio'      && <Shio />}
+        {tab === 'pola'      && <PolaIkutan />}
+        {tab === 'backtest'  && <Backtesting />}
+        {tab === 'history'   && <History />}
       </main>
     </div>
   );
@@ -76,7 +77,9 @@ function AppInner() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner />
+      <ToastProvider>
+        <AppInner />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

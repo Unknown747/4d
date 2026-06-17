@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { fetchApi } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -18,14 +19,18 @@ interface ValidateResult {
 }
 
 const QUICK_BUTTONS = [
-  { label: '🔥 Prediksi 2D Hari Ini', text: 'Berikan prediksi 2D terbaik untuk draw hari ini berdasarkan data terbaru.' },
-  { label: '📊 Analisis Data', text: 'Analisis pola dan tren dari data draw terakhir. Apa yang menarik perhatianmu?' },
-  { label: '🧊 Angka Cold', text: 'Angka 2D apa saja yang paling lama tidak muncul (overdue)? Apakah layak dipasang?' },
-  { label: '💡 Tips Togel', text: 'Berikan tips dan strategi terbaik untuk memprediksi togel HK berdasarkan analisis statistik.' },
-  { label: '🐉 Shio Terbaik', text: 'Shio apa yang paling berpotensi keluar berdasarkan data terakhir?' },
+  { label: '🔥 Prediksi 2D',     text: 'Berikan prediksi 2D terbaik untuk draw hari ini berdasarkan data terbaru HK.' },
+  { label: '📊 Analisis Pola',   text: 'Analisis pola dan tren dari data draw terakhir. Temukan pola berulang yang menarik.' },
+  { label: '🧊 Angka Cold',      text: 'Angka 2D apa saja yang paling lama tidak muncul (overdue)? Apakah layak dipasang?' },
+  { label: '🔥 Panas/Dingin',    text: 'Bandingkan angka-angka paling panas (hot) dan paling dingin (cold) saat ini. Mana yang sebaiknya dipilih?' },
+  { label: '🔄 Bandingkan 2D',   text: 'Bandingkan 5 pasang 2D teratas yang paling sering keluar vs yang paling overdue. Beri rekomendasi.' },
+  { label: '💡 Saran Pasang',    text: 'Berikan saran strategi pasang untuk draw berikutnya: angka apa, posisi apa (kepala/ekor), dan alasannya.' },
+  { label: '🐉 Shio Terbaik',    text: 'Shio apa yang paling berpotensi keluar berdasarkan data terakhir? Jelaskan alasannya.' },
+  { label: '📈 Pola Ikutan',     text: 'Apakah ada pola "ikutan" atau "turut" dalam data HK terakhir? Jelaskan dengan contoh angka.' },
 ];
 
 export default function GeminiChat() {
+  const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -41,7 +46,6 @@ export default function GeminiChat() {
   const [validateAngka, setValidateAngka] = useState('');
   const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
   const [validateLoading, setValidateLoading] = useState(false);
-  const [validateError, setValidateError] = useState('');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -66,6 +70,7 @@ export default function GeminiChat() {
         timestamp: data.timestamp,
       }]);
     } catch (e) {
+      toast(`Gagal menghubungi AI: ${String(e)}`, 'error');
       setMessages(prev => [...prev, {
         role: 'assistant',
         text: `⚠️ Maaf, terjadi error: ${String(e)}`,
@@ -78,11 +83,10 @@ export default function GeminiChat() {
 
   async function handleValidate() {
     if (!validateAngka.trim() || !/^\d{2,4}$/.test(validateAngka)) {
-      setValidateError('Masukkan angka 2-4 digit');
+      toast('Masukkan angka 2–4 digit', 'warning');
       return;
     }
     setValidateLoading(true);
-    setValidateError('');
     setValidateResult(null);
     try {
       const result = await fetchApi<ValidateResult>('/gemini/validate', {
@@ -90,17 +94,18 @@ export default function GeminiChat() {
         body: JSON.stringify({ angka: validateAngka }),
       });
       setValidateResult(result);
+      toast(`Validasi selesai — Status: ${result.result.status}`, result.result.status === 'KUAT' ? 'success' : result.result.status === 'LEMAH' ? 'error' : 'warning');
     } catch (e) {
-      setValidateError(String(e));
+      toast(`Validasi gagal: ${String(e)}`, 'error');
     } finally {
       setValidateLoading(false);
     }
   }
 
   const statusColor: Record<string, string> = {
-    KUAT: 'text-green-400 border-green-600 bg-green-900/20',
-    SEDANG: 'text-amber-400 border-amber-600 bg-amber-900/20',
-    LEMAH: 'text-red-400 border-red-600 bg-red-900/20',
+    KUAT:  'text-green-400 border-green-600 bg-green-900/20',
+    SEDANG:'text-amber-400 border-amber-600 bg-amber-900/20',
+    LEMAH: 'text-red-400   border-red-600   bg-red-900/20',
   };
 
   return (
@@ -110,21 +115,25 @@ export default function GeminiChat() {
         <div className="card-header">✅ Validasi Angka dengan AI</div>
         <div className="flex gap-2">
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            maxLength={4}
             value={validateAngka}
-            onChange={e => setValidateAngka(e.target.value.slice(0, 4))}
+            onChange={e => setValidateAngka(e.target.value.replace(/\D/g,'').slice(0,4))}
             onKeyDown={e => e.key === 'Enter' && handleValidate()}
-            placeholder="Masukkan 2-4 digit angka"
-            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
+            placeholder="Masukkan 2–4 digit angka"
+            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono tracking-widest"
           />
-          <button onClick={handleValidate} disabled={validateLoading}
-            className="btn-primary">
+          <button onClick={handleValidate} disabled={validateLoading} className="btn-primary">
             {validateLoading ? <span className="spinner !w-4 !h-4" /> : '✅ Validasi'}
           </button>
         </div>
 
-        {validateError && (
-          <div className="mt-3 text-red-400 text-sm">{validateError}</div>
+        {validateLoading && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-violet-400">
+            <span className="spinner !w-4 !h-4 border-t-violet-400" />
+            Menganalisis dengan Gemini AI...
+          </div>
         )}
 
         {validateResult && (
@@ -140,26 +149,29 @@ export default function GeminiChat() {
             {validateResult.result.suggestion && (
               <div className="mt-1 text-xs opacity-70 italic">{validateResult.result.suggestion}</div>
             )}
-            {/* Score bar */}
             <div className="mt-3 h-2 bg-black/30 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${validateResult.result.score}%`, background: 'currentColor', opacity: 0.7 }} />
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${validateResult.result.score}%`, background: 'currentColor', opacity: 0.7 }} />
             </div>
           </div>
         )}
       </div>
 
       {/* Chat Panel */}
-      <div className="card flex flex-col" style={{ minHeight: '500px' }}>
-        <div className="card-header">🤖 Chat dengan HK Pro AI</div>
+      <div className="card flex flex-col" style={{ minHeight: '520px' }}>
+        <div className="card-header">
+          🤖 Chat dengan HK Pro AI
+          <span className="ml-auto text-xs text-slate-600 normal-case tracking-normal font-normal">Gemini 2.5 Flash</span>
+        </div>
 
-        {/* Quick buttons */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        {/* Quick buttons — 2 rows */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
           {QUICK_BUTTONS.map(btn => (
             <button
               key={btn.label}
               onClick={() => sendMessage(btn.text)}
               disabled={loading}
-              className="btn-ghost text-xs py-1.5 disabled:opacity-40"
+              className="btn-ghost text-xs py-1.5 px-2.5 disabled:opacity-40"
             >
               {btn.label}
             </button>
@@ -167,7 +179,7 @@ export default function GeminiChat() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1" style={{ maxHeight: '400px' }}>
+        <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1" style={{ maxHeight: '380px' }}>
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
@@ -221,13 +233,11 @@ export default function GeminiChat() {
           </button>
         </div>
 
-        {/* Clear chat */}
         <button
-          onClick={() => setMessages([{
-            role: 'assistant',
-            text: 'Chat dikosongkan. Saya siap membantu lagi! 🎰',
-            timestamp: new Date().toISOString(),
-          }])}
+          onClick={() => {
+            setMessages([{ role: 'assistant', text: 'Chat dikosongkan. Saya siap membantu lagi! 🎰', timestamp: new Date().toISOString() }]);
+            toast('Chat dikosongkan', 'info');
+          }}
           className="text-xs text-slate-600 hover:text-slate-400 mt-2 self-end transition-colors"
         >
           Kosongkan chat

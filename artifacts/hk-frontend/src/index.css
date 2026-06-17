@@ -48,3 +48,9 @@ body {
 .btn-ghost {
   @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a2235] border border-[#1e2d45] text-slate-300 font-semibold text-sm hover:border-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
 }
+
+/* Toast slide-in animation */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

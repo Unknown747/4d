@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchApi, type StatsData, type Row } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 // Today's date in YYYY-MM-DD format (local timezone)
 function todayStr() {
@@ -26,34 +27,32 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 }
 
 function QuickInput({ onSaved }: { onSaved: () => void }) {
+  const { toast } = useToast();
   const [date, setDate] = useState(todayStr());
   const [angka, setAngka] = useState('');
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const preview = angka.length >= 2 ? derive(angka.padStart(4, '0')) : null;
 
   async function handleSave() {
-    if (!/^\d{1,4}$/.test(angka)) { setMsg({ type: 'err', text: 'Angka harus 1–4 digit' }); return; }
-    if (!date) { setMsg({ type: 'err', text: 'Tanggal wajib diisi' }); return; }
+    if (!/^\d{1,4}$/.test(angka)) { toast('Angka harus 1–4 digit', 'warning'); return; }
+    if (!date) { toast('Tanggal wajib diisi', 'warning'); return; }
     setSaving(true);
-    setMsg(null);
     try {
       const saved = await fetchApi<Row>('/results', {
         method: 'POST',
         body: JSON.stringify({ draw_date: date, result_4d: angka }),
       });
-      setMsg({ type: 'ok', text: `✅ Tersimpan: ${saved.result_4d} · 3D: ${saved.result_3d} · 2D: ${saved.result_2d}` });
+      toast(`Tersimpan: ${saved.result_4d} · 3D: ${saved.result_3d} · 2D: ${saved.result_2d}`, 'success');
       setAngka('');
-      // advance date by 1 for next input convenience
       const next = new Date(date);
       next.setDate(next.getDate() + 1);
       setDate(`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`);
       onSaved();
       setTimeout(() => inputRef.current?.focus(), 100);
     } catch (e) {
-      setMsg({ type: 'err', text: `❌ ${String(e)}` });
+      toast(`Gagal menyimpan: ${String(e)}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -124,12 +123,6 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
-      {/* Feedback */}
-      {msg && (
-        <div className={`mt-3 text-sm px-3 py-2 rounded-lg border font-medium ${msg.type === 'ok' ? 'bg-green-900/20 border-green-700 text-green-400' : 'bg-red-900/20 border-red-700 text-red-400'}`}>
-          {msg.text}
-        </div>
-      )}
     </div>
   );
 }
