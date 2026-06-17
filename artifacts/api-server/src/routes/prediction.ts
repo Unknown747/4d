@@ -361,7 +361,7 @@ router.get("/predict", (req, res): void => {
 
 router.get("/bb-campuran", (req, res): void => {
   const rawDigits = (req.query["digits"] as string) ?? "";
-  const mode = (req.query["mode"] as string) ?? "hot";
+  const mode = "balanced";
   const autoMode = !rawDigits || rawDigits.trim() === "";
 
   const rows = db.prepare(

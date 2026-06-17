@@ -541,16 +541,8 @@ async function submitResult(e) {
 
 // ─── BB Campuran ───────────────────────────────────────────────
 
-let bbMode = 'hot';
 let bbManualDigits = new Set();
 let bbOverrideOpen = false;
-
-function setBBMode(btn, mode) {
-  bbMode = mode;
-  document.querySelectorAll('#page-bb .mode-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  generateBB();
-}
 
 // Render BB results into the list
 function renderBBResults(data) {
@@ -595,7 +587,7 @@ async function generateBB() {
   if (digitsRow) digitsRow.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;"></div>';
 
   try {
-    const data = await api(`/bb-campuran?mode=${bbMode}`);
+    const data = await api(`/bb-campuran`);
     renderBBResults(data);
 
     // Sync manual digit grid to show what auto picked
@@ -626,7 +618,7 @@ async function generateBBManual() {
   if (digitsRow) digitsRow.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;"></div>';
 
   try {
-    const data = await api(`/bb-campuran?digits=${sorted.join('')}&mode=${bbMode}`);
+    const data = await api(`/bb-campuran?digits=${sorted.join('')}`);
     renderBBResults(data);
   } catch (e) {
     if (resultList) {
