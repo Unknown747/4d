@@ -30,6 +30,26 @@ export function initDb() {
       status TEXT DEFAULT 'ok',
       message TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS predictions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      pred_type TEXT NOT NULL,
+      angka TEXT NOT NULL,
+      method TEXT DEFAULT 'statistik',
+      score INTEGER DEFAULT 50,
+      reason TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS validations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      angka TEXT NOT NULL,
+      status TEXT DEFAULT 'SEDANG',
+      score INTEGER DEFAULT 50,
+      reason TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   const count = (db.prepare("SELECT COUNT(*) as c FROM hk4d_results").get() as { c: number }).c;

@@ -7,6 +7,10 @@ description: Key schema and derivation rules for the HK 4D prediction app.
 Table: `hk4d_results` (NOT `results` — old Mark Six table removed)
 Columns: id, draw_date (UNIQUE), result_4d (padded 4-char string), result_3d, result_2d, source, created_at
 
+Table: `predictions` — id, date, pred_type, angka, method, score, reason, created_at
+
+Table: `validations` — id, angka, status, score, reason, created_at
+
 ## Derivation Rule
 - result_4d stored as padded 4-char string e.g. "1064", "0365"
 - result_3d = result_4d.slice(1)  → last 3 digits
@@ -25,7 +29,19 @@ Columns: id, draw_date (UNIQUE), result_4d (padded 4-char string), result_3d, re
 Source = 'seed'. Manual entries source = 'manual'. Auto-sync is disabled (no public HK 4D API found).
 
 ## Frontend
-- Vanilla HTML/CSS/JS at artifacts/hk-frontend (Vite, port 18654)
-- Mobile: bottom nav bar (fixed), 2-col grid, large touch targets
-- Desktop: sticky top navbar with tabs
+- React Vite app at artifacts/hk-frontend (port 18654), index.html must be simple Vite entry (just <div id="root"> + <script type="module" src="/src/main.tsx">)
+- Old vanilla HTML was replaced — index.html previously was full vanilla app causing old UI to be served
+- Tabs: Dashboard, Prediksi (statistik+gemini+kombinasi), Paito (color grid), AI Chat (Gemini), Angka Fix, Shio, Pola, Akurasi, History
 - API at /api → port 8080 (Express, artifacts/api-server)
+
+## Gemini Integration
+- Uses user's own GEMINI_API_KEY (env secret) — Replit AI integration requires upgrade
+- Endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
+- Routes: POST /api/gemini/validate, POST /api/gemini/predict, POST /api/gemini/chat, GET /api/gemini/history
+- gemini.ts in artifacts/api-server/src/routes/
+
+## Native Build (better-sqlite3)
+- Needs Python3 + gcc to compile native .node binding
+- Python3 must be installed via installSystemDependencies
+- After Python install: configure with node-gyp from pnpm store, then `make -C build` in better-sqlite3 dir
+- The build takes ~60-90s to compile SQLite from source

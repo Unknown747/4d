@@ -6,6 +6,9 @@ import Shio from './pages/Shio';
 import PolaIkutan from './pages/PolaIkutan';
 import Backtesting from './pages/Backtesting';
 import History from './pages/History';
+import Paito from './pages/Paito';
+import Prediksi from './pages/Prediksi';
+import GeminiChat from './pages/GeminiChat';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -13,9 +16,12 @@ const queryClient = new QueryClient({
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { id: 'fix', label: 'Angka Fix', icon: '🎯' },
+  { id: 'prediksi', label: 'Prediksi', icon: '🎯' },
+  { id: 'paito', label: 'Paito', icon: '🎨' },
+  { id: 'gemini', label: 'AI Chat', icon: '🤖' },
+  { id: 'fix', label: 'Angka Fix', icon: '⭐' },
   { id: 'shio', label: 'Shio', icon: '🐉' },
-  { id: 'pola', label: 'Pola Ikutan', icon: '🔗' },
+  { id: 'pola', label: 'Pola', icon: '🔗' },
   { id: 'backtest', label: 'Akurasi', icon: '📈' },
   { id: 'history', label: 'History', icon: '📋' },
 ] as const;
@@ -54,6 +60,9 @@ function AppInner() {
 
       <main className="max-w-5xl mx-auto px-4 py-5">
         {tab === 'dashboard' && <Dashboard />}
+        {tab === 'prediksi' && <Prediksi />}
+        {tab === 'paito' && <Paito />}
+        {tab === 'gemini' && <GeminiChat />}
         {tab === 'fix' && <AngkaFix />}
         {tab === 'shio' && <Shio />}
         {tab === 'pola' && <PolaIkutan />}
