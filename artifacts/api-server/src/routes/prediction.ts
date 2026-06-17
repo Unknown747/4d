@@ -414,6 +414,11 @@ router.get("/bb-campuran", (req, res): void => {
     }
   }
 
+  // Build exclusion set: angka 4D yang sudah keluar dalam 14 draw terakhir
+  const recentDrawn = new Set(
+    rows.slice(0, 14).map(r => r.result_4d.padStart(4, "0"))
+  );
+
   // Generate all combinations (with repetition): activeDigits^4
   const n = activeDigits.length;
   const totalCombinations = n * n * n * n;
@@ -436,13 +441,17 @@ router.get("/bb-campuran", (req, res): void => {
     }
   }
 
-  // Sort descending, take top 10
+  // Sort descending
   candidates.sort((a, b) => b.score - a.score);
-  const top10 = candidates.slice(0, 10);
+
+  // Filter out recently drawn numbers, take top 10 from remainder
+  const filtered = candidates.filter(c => !recentDrawn.has(c.number.padStart(4, "0")));
+  const excluded = candidates.filter(c => recentDrawn.has(c.number.padStart(4, "0"))).slice(0, 5);
+  const top10 = filtered.slice(0, 10);
 
   // Normalize scores to 0–100 range for display
-  const maxScore = top10[0]!.score;
-  const minScore = candidates[candidates.length - 1]!.score;
+  const maxScore = top10[0]?.score ?? 1;
+  const minScore = filtered[filtered.length - 1]?.score ?? 0;
   const range = maxScore - minScore || 1;
 
   const predictions = top10.map((c, i) => {
@@ -458,12 +467,15 @@ router.get("/bb-campuran", (req, res): void => {
     return { number: s, result3d, result2d, score: displayScore, reason };
   });
 
+  const excludedNumbers = excluded.map(c => c.number.padStart(4, "0"));
+
   res.json({
     autoMode,
     activeDigits,
     autoSelectedInfo,
-    mode,
     totalCombinations,
+    excludedCount: recentDrawn.size,
+    excludedNumbers,
     predictions,
     totalDrawsAnalyzed: total,
   });

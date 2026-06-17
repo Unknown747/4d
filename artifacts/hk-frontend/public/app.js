@@ -560,7 +560,20 @@ function renderBBResults(data) {
   }
 
   if (resultList) {
-    resultList.innerHTML = data.predictions.map((p, i) =>
+    // Excluded notice
+    let excludedHtml = '';
+    if (data.excludedNumbers && data.excludedNumbers.length > 0) {
+      const chips = data.excludedNumbers.map(n =>
+        `<span class="bb-excluded-chip">${escapeHtml(n)}</span>`
+      ).join('');
+      excludedHtml = `
+        <div class="bb-excluded-notice">
+          <span class="bb-excluded-label">🚫 Dibuang (baru keluar):</span>
+          <span class="bb-excluded-chips">${chips}</span>
+        </div>`;
+    }
+
+    const items = data.predictions.map((p, i) =>
       `<div class="bb-result-item">
         <div class="bb-rank">#${i + 1}</div>
         <div class="bb-nums">
@@ -576,6 +589,8 @@ function renderBBResults(data) {
         </div>
       </div>`
     ).join('');
+
+    resultList.innerHTML = excludedHtml + items;
   }
 }
 
