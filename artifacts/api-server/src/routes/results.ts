@@ -1,16 +1,18 @@
 import { Router } from "express";
 import { db, derive4d } from "../db/sqlite.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
 router.get("/results", (req, res) => {
+  const market = (req.query["market"] as string) ?? "sgp";
   const limit = Math.min(Number(req.query["limit"] ?? 20), 200);
   const offset = Number(req.query["offset"] ?? 0);
   const rows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT ? OFFSET ?`
-  ).all(limit, offset);
-  const total = (db.prepare("SELECT COUNT(*) as c FROM hk4d_results").get() as { c: number }).c;
-  res.json({ data: rows, total, limit, offset });
+    `SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT ? OFFSET ?`
+  ).all(market, limit, offset);
+  const total = (db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE market = ?").get(market) as { c: number }).c;
+  res.json({ data: rows, total, limit, offset, market });
 });
 
 router.get("/results/:id", (req, res): void => {
@@ -20,7 +22,9 @@ router.get("/results/:id", (req, res): void => {
 });
 
 router.post("/results", (req, res): void => {
-  const { draw_date, result_4d } = req.body;
+  const { draw_date, result_4d, market: rawMarket } = req.body;
+  const market = (rawMarket === "sdy" ? "sdy" : "sgp");
+
   if (!draw_date || !result_4d) {
     res.status(400).json({ error: "draw_date dan result_4d wajib diisi" }); return;
   }
@@ -31,19 +35,19 @@ router.post("/results", (req, res): void => {
   const { r3d, r2d } = derive4d(r);
   try {
     const info = db.prepare(
-      `INSERT INTO hk4d_results (draw_date, result_4d, result_3d, result_2d, source)
-       VALUES (?, ?, ?, ?, 'manual')`
-    ).run(draw_date, r, r3d, r2d);
+      `INSERT INTO hk4d_results (market, draw_date, result_4d, result_3d, result_2d, source)
+       VALUES (?, ?, ?, ?, ?, 'manual')`
+    ).run(market, draw_date, r, r3d, r2d);
     const row = db.prepare("SELECT * FROM hk4d_results WHERE id = ?").get(info.lastInsertRowid);
 
-    // ── Verifikasi SEMUA rekomendasi yang belum dicek sebelum tanggal ini ──
+    // Verifikasi SEMUA rekomendasi yang belum dicek untuk market ini
     try {
       interface RekRow { id: number; predictions_json: string; }
       const unchecked = db.prepare(`
         SELECT id, predictions_json FROM rekomendasi_history
-        WHERE based_on_date < ? AND actual_4d IS NULL
+        WHERE market = ? AND based_on_date < ? AND actual_4d IS NULL
         ORDER BY based_on_date ASC
-      `).all(draw_date) as RekRow[];
+      `).all(market, draw_date) as RekRow[];
 
       if (unchecked.length > 0) {
         const updateStmt = db.prepare(`
@@ -66,13 +70,13 @@ router.post("/results", (req, res): void => {
         doVerify();
       }
     } catch (rekErr) {
-      console.error("[win-rate] Gagal update rekomendasi_history:", rekErr);
+      logger.error({ err: rekErr }, "Gagal update rekomendasi_history win-rate");
     }
 
     res.status(201).json(row);
   } catch (err: any) {
-    if (err?.code === "SQLITE_CONSTRAINT_UNIQUE") {
-      res.status(409).json({ error: `Tanggal ${draw_date} sudah ada. Hapus dulu jika ingin update.` });
+    if (err?.code === "SQLITE_CONSTRAINT_UNIQUE" || err?.message?.includes("UNIQUE")) {
+      res.status(409).json({ error: `Tanggal ${draw_date} (${market.toUpperCase()}) sudah ada. Hapus dulu jika ingin update.` });
     } else {
       res.status(500).json({ error: String(err) });
     }

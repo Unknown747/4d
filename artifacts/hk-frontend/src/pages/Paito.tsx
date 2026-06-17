@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchApi, type ResultsData } from '../lib/api';
+import { useMarket, MARKET_INFO } from '../context/MarketContext';
 
 const PERIODS = [10, 30, 50, 100] as const;
 type Period = typeof PERIODS[number];
@@ -25,29 +26,29 @@ function getColor(freq: number, max: number): string {
 }
 
 function extract2D(s4d: string, pos: PosFilter): string {
-  // s4d is always 4-char padded
   switch (pos) {
     case 'as':     return s4d.slice(0, 2);
     case 'kop':    return s4d.slice(1, 3);
-    case 'kepala': return s4d[0]! + s4d[2]!;  // AS + KEPALA
-    case 'ekor':   return s4d[1]! + s4d[3]!;  // KOP + EKOR
-    default:       return s4d.slice(2, 4); // "all" = standard 2D (KEPALA+EKOR)
+    case 'kepala': return s4d[0]! + s4d[2]!;
+    case 'ekor':   return s4d[1]! + s4d[3]!;
+    default:       return s4d.slice(2, 4);
   }
 }
 
 export default function Paito() {
+  const { market } = useMarket();
+  const mi = MARKET_INFO[market];
   const [period, setPeriod] = useState<Period>(30);
   const [pos, setPos] = useState<PosFilter>('all');
 
   const { data, isLoading, error } = useQuery<ResultsData>({
-    queryKey: ['results-paito', period],
-    queryFn: () => fetchApi<ResultsData>(`/results?limit=${period}&offset=0`),
+    queryKey: ['results-paito', period, market],
+    queryFn: () => fetchApi<ResultsData>(`/results?limit=${period}&offset=0&market=${market}`),
     staleTime: 30_000,
   });
 
   const rows = data?.data ?? [];
 
-  // Build frequency map for 2D pairs (00–99)
   const freq2D: Record<string, number> = {};
   for (let i = 0; i <= 99; i++) freq2D[String(i).padStart(2, '0')] = 0;
 
@@ -59,13 +60,12 @@ export default function Paito() {
 
   const maxFreq = Math.max(...Object.values(freq2D), 1);
 
-  // Last seen (draws ago) for each 2D per current pos
   const lastSeen: Record<string, number> = {};
   for (let i = 0; i <= 99; i++) lastSeen[String(i).padStart(2, '0')] = rows.length;
   rows.forEach((row, idx) => {
     const s = row.result_4d.padStart(4, '0');
     const key = extract2D(s, pos);
-    if (lastSeen[key] === rows.length) lastSeen[key] = idx; // first occurrence = idx draws ago
+    if (lastSeen[key] === rows.length) lastSeen[key] = idx;
   });
 
   const sorted = Object.entries(freq2D).sort((a, b) => b[1] - a[1]);
@@ -76,19 +76,15 @@ export default function Paito() {
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
       <div className="card">
-        <div className="card-header">🎨 Paito Warna HK 4D</div>
+        <div className="card-header">🎨 Paito Warna {mi.flag} {mi.short}</div>
         <div className="flex flex-wrap gap-4">
           <div>
             <div className="text-xs text-slate-500 mb-1.5 font-medium uppercase tracking-wide">Periode (draw terakhir)</div>
             <div className="flex gap-1.5">
               {PERIODS.map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${period === p ? 'bg-amber-400 text-black' : 'bg-[#1a2235] border border-[#1e2d45] text-slate-400 hover:border-amber-500'}`}
-                >
+                <button key={p} onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${period === p ? 'bg-amber-400 text-black' : 'bg-[#1a2235] border border-[#1e2d45] text-slate-400 hover:border-amber-500'}`}>
                   {p}
                 </button>
               ))}
@@ -98,12 +94,8 @@ export default function Paito() {
             <div className="text-xs text-slate-500 mb-1.5 font-medium uppercase tracking-wide">Posisi Analisis</div>
             <div className="flex gap-1.5 flex-wrap">
               {POS_OPTIONS.map(o => (
-                <button
-                  key={o.id}
-                  onClick={() => setPos(o.id)}
-                  title={o.desc}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${pos === o.id ? 'bg-violet-600 text-white' : 'bg-[#1a2235] border border-[#1e2d45] text-slate-400 hover:border-violet-500'}`}
-                >
+                <button key={o.id} onClick={() => setPos(o.id)} title={o.desc}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${pos === o.id ? 'bg-violet-600 text-white' : 'bg-[#1a2235] border border-[#1e2d45] text-slate-400 hover:border-violet-500'}`}>
                   {o.label}
                 </button>
               ))}
@@ -111,12 +103,10 @@ export default function Paito() {
           </div>
         </div>
 
-        {/* Active filter info */}
         <div className="mt-3 text-xs text-violet-400 bg-violet-900/10 border border-violet-800/30 rounded-lg px-3 py-2">
           📌 Menampilkan: <strong>{posInfo.desc}</strong> — {rows.length} draw dianalisis
         </div>
 
-        {/* Legend */}
         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[#1e2d45] flex-wrap">
           <span className="text-xs text-slate-500">Frekuensi:</span>
           {[
@@ -144,7 +134,6 @@ export default function Paito() {
         <div className="card text-red-400 text-center py-8">{String(error)}</div>
       ) : (
         <>
-          {/* Grid 10×10 */}
           <div className="card overflow-x-auto">
             <div className="card-header">Grid 00–99 · {posInfo.label} · {rows.length} draw</div>
             <div className="grid" style={{ gridTemplateColumns: 'repeat(10, minmax(0, 1fr))', gap: '4px' }}>
@@ -154,12 +143,10 @@ export default function Paito() {
                 const ago   = lastSeen[num] ?? rows.length;
                 const color = getColor(count, maxFreq);
                 return (
-                  <div
-                    key={num}
+                  <div key={num}
                     title={`${num}: ${count}x · terakhir ${ago === rows.length ? 'belum pernah' : ago + ' draw lalu'}`}
                     className="rounded-lg flex flex-col items-center justify-center py-1.5 cursor-default transition-transform hover:scale-110"
-                    style={{ background: color, minHeight: '44px' }}
-                  >
+                    style={{ background: color, minHeight: '44px' }}>
                     <div className="font-bold text-white text-xs leading-none">{num}</div>
                     <div className="text-white/70 text-[10px] leading-none mt-0.5">{count}x</div>
                   </div>
@@ -168,7 +155,6 @@ export default function Paito() {
             </div>
           </div>
 
-          {/* Hot & Cold */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card">
               <div className="card-header">🔥 Top Hot — Sering Muncul</div>
@@ -194,12 +180,11 @@ export default function Paito() {
             </div>
           </div>
 
-          {/* Recent Draws Table */}
           <div className="card overflow-x-auto">
             <div className="card-header">📋 Paito {Math.min(rows.length, 20)} Draw Terakhir · Posisi {posInfo.label}</div>
             <div className="space-y-1">
               {rows.slice(0, 20).map((row) => {
-                const s  = row.result_4d.padStart(4, '0');
+                const s = row.result_4d.padStart(4, '0');
                 const highlight = extract2D(s, pos);
                 return (
                   <div key={row.id} className="flex items-center gap-2 text-xs py-1.5 border-b border-[#1e2d45]/50 last:border-0">

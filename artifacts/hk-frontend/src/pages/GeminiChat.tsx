@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchApi } from '../lib/api';
 import { useToast } from '../components/Toast';
+import { useMarket, MARKET_INFO } from '../context/MarketContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -19,28 +20,32 @@ interface ValidateResult {
   };
 }
 
-const QUICK_BUTTONS = [
-  { label: '🔥 Prediksi 2D',     text: 'Berikan prediksi 2D terbaik untuk draw hari ini berdasarkan data terbaru HK.' },
-  { label: '📊 Analisis Pola',   text: 'Analisis pola dan tren dari data draw terakhir. Temukan pola berulang yang menarik.' },
-  { label: '🧊 Angka Cold',      text: 'Angka 2D apa saja yang paling lama tidak muncul (overdue)? Apakah layak dipasang?' },
-  { label: '🔥 Panas/Dingin',    text: 'Bandingkan angka-angka paling panas (hot) dan paling dingin (cold) saat ini. Mana yang sebaiknya dipilih?' },
-  { label: '🔄 Bandingkan 2D',   text: 'Bandingkan 5 pasang 2D teratas yang paling sering keluar vs yang paling overdue. Beri rekomendasi.' },
-  { label: '💡 Saran Pasang',    text: 'Berikan saran strategi pasang untuk draw berikutnya: angka apa, posisi apa (kepala/ekor), dan alasannya.' },
-  { label: '🐉 Shio Terbaik',    text: 'Shio apa yang paling berpotensi keluar berdasarkan data terakhir? Jelaskan alasannya.' },
-  { label: '📈 Pola Ikutan',     text: 'Apakah ada pola "ikutan" atau "turut" dalam data HK terakhir? Jelaskan dengan contoh angka.' },
-];
-
 export default function GeminiChat() {
   const { toast } = useToast();
+  const { market } = useMarket();
+  const mi = MARKET_INFO[market];
+
+  const QUICK_BUTTONS = [
+    { label: '🔥 Prediksi 2D',   text: `Berikan prediksi 2D terbaik untuk draw ${mi.short} hari ini berdasarkan data terbaru.` },
+    { label: '📊 Analisis Pola', text: `Analisis pola dan tren dari data draw ${mi.short} terakhir. Temukan pola berulang yang menarik.` },
+    { label: '🧊 Angka Cold',    text: `Angka 2D ${mi.short} apa saja yang paling lama tidak muncul (overdue)? Apakah layak dipasang?` },
+    { label: '🔥 Panas/Dingin',  text: `Bandingkan angka-angka paling panas (hot) dan paling dingin (cold) ${mi.short} saat ini. Mana yang sebaiknya dipilih?` },
+    { label: '🔄 Bandingkan 2D', text: `Bandingkan 5 pasang 2D ${mi.short} teratas yang paling sering keluar vs yang paling overdue. Beri rekomendasi.` },
+    { label: '💡 Saran Pasang',  text: `Berikan saran strategi pasang ${mi.short} untuk draw berikutnya: angka apa, posisi apa (kepala/ekor), dan alasannya.` },
+    { label: '🐉 Shio Terbaik',  text: `Shio apa yang paling berpotensi keluar di ${mi.short} berdasarkan data terakhir? Jelaskan alasannya.` },
+    { label: '📈 Pola Ikutan',   text: `Apakah ada pola "ikutan" atau "turut" dalam data ${mi.short} terakhir? Jelaskan dengan contoh angka.` },
+  ];
+
   const { data: geminiStatus } = useQuery<{ configured: boolean }>({
     queryKey: ['gemini-status'],
     queryFn: () => fetchApi<{ configured: boolean }>('/gemini/status'),
     staleTime: 60_000,
   });
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      text: 'Halo! Saya HK Pro AI, asisten prediksi togel HK 4D. Saya dapat membantu analisis data, prediksi angka, dan menjawab pertanyaan seputar togel HK. Apa yang ingin Anda ketahui? 🎰',
+      text: `Halo! Saya Toto Pro AI, asisten prediksi ${mi.label} 4D. Saya dapat membantu analisis data, prediksi angka, dan menjawab pertanyaan seputar togel ${mi.short}. Apa yang ingin Anda ketahui? 🎯`,
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -48,7 +53,6 @@ export default function GeminiChat() {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Validate state
   const [validateAngka, setValidateAngka] = useState('');
   const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
   const [validateLoading, setValidateLoading] = useState(false);
@@ -56,6 +60,15 @@ export default function GeminiChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Reset greeting when market changes
+  useEffect(() => {
+    setMessages([{
+      role: 'assistant',
+      text: `Halo! Saya Toto Pro AI, asisten prediksi ${mi.label} 4D. Saya dapat membantu analisis data, prediksi angka, dan menjawab pertanyaan seputar togel ${mi.short}. Apa yang ingin Anda ketahui? 🎯`,
+      timestamp: new Date().toISOString(),
+    }]);
+  }, [market]);
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
@@ -68,20 +81,12 @@ export default function GeminiChat() {
       const history = messages.slice(-8).map(m => ({ role: m.role, text: m.text }));
       const data = await fetchApi<{ reply: string; timestamp: string }>('/gemini/chat', {
         method: 'POST',
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, history, market }),
       });
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: data.reply,
-        timestamp: data.timestamp,
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', text: data.reply, timestamp: data.timestamp }]);
     } catch (e) {
       toast(`Gagal menghubungi AI: ${String(e)}`, 'error');
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: `⚠️ Maaf, terjadi error: ${String(e)}`,
-        timestamp: new Date().toISOString(),
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ Maaf, terjadi error: ${String(e)}`, timestamp: new Date().toISOString() }]);
     } finally {
       setLoading(false);
     }
@@ -89,15 +94,14 @@ export default function GeminiChat() {
 
   async function handleValidate() {
     if (!validateAngka.trim() || !/^\d{2,4}$/.test(validateAngka)) {
-      toast('Masukkan angka 2–4 digit', 'warning');
-      return;
+      toast('Masukkan angka 2–4 digit', 'warning'); return;
     }
     setValidateLoading(true);
     setValidateResult(null);
     try {
       const result = await fetchApi<ValidateResult>('/gemini/validate', {
         method: 'POST',
-        body: JSON.stringify({ angka: validateAngka }),
+        body: JSON.stringify({ angka: validateAngka, market }),
       });
       setValidateResult(result);
       toast(`Validasi selesai — Status: ${result.result.status}`, result.result.status === 'KUAT' ? 'success' : result.result.status === 'LEMAH' ? 'error' : 'warning');
@@ -128,20 +132,15 @@ export default function GeminiChat() {
         </div>
       )}
 
-      {/* Validate Panel */}
       <div className="card">
-        <div className="card-header">✅ Validasi Angka dengan AI</div>
+        <div className="card-header">✅ Validasi Angka dengan AI <span className="text-xs text-slate-500 ml-2">{mi.flag} {mi.short}</span></div>
         <div className="flex gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={4}
+          <input type="text" inputMode="numeric" maxLength={4}
             value={validateAngka}
             onChange={e => setValidateAngka(e.target.value.replace(/\D/g,'').slice(0,4))}
             onKeyDown={e => e.key === 'Enter' && handleValidate()}
             placeholder="Masukkan 2–4 digit angka"
-            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono tracking-widest"
-          />
+            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono tracking-widest" />
           <button onClick={handleValidate} disabled={validateLoading} className="btn-primary">
             {validateLoading ? <span className="spinner !w-4 !h-4" /> : '✅ Validasi'}
           </button>
@@ -175,28 +174,21 @@ export default function GeminiChat() {
         )}
       </div>
 
-      {/* Chat Panel */}
       <div className="card flex flex-col" style={{ minHeight: '520px' }}>
         <div className="card-header">
-          🤖 Chat dengan HK Pro AI
-          <span className="ml-auto text-xs text-slate-600 normal-case tracking-normal font-normal">Gemini 2.5 Flash</span>
+          🤖 Chat dengan Toto Pro AI
+          <span className="ml-auto text-xs text-slate-600 normal-case tracking-normal font-normal">Gemini 2.5 Flash · {mi.flag} {mi.short}</span>
         </div>
 
-        {/* Quick buttons — 2 rows */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           {QUICK_BUTTONS.map(btn => (
-            <button
-              key={btn.label}
-              onClick={() => sendMessage(btn.text)}
-              disabled={loading}
-              className="btn-ghost text-xs py-1.5 px-2.5 disabled:opacity-40"
-            >
+            <button key={btn.label} onClick={() => sendMessage(btn.text)} disabled={loading}
+              className="btn-ghost text-xs py-1.5 px-2.5 disabled:opacity-40">
               {btn.label}
             </button>
           ))}
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1" style={{ maxHeight: '380px' }}>
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -205,9 +197,7 @@ export default function GeminiChat() {
                   ? 'bg-amber-500/20 border border-amber-500/30 text-amber-100 rounded-tr-sm'
                   : 'bg-[#1a2235] border border-[#1e2d45] text-slate-200 rounded-tl-sm'
               }`}>
-                {msg.role === 'assistant' && (
-                  <div className="text-xs text-violet-400 font-bold mb-1">🤖 HK Pro AI</div>
-                )}
+                {msg.role === 'assistant' && <div className="text-xs text-violet-400 font-bold mb-1">🤖 Toto Pro AI</div>}
                 <div className="whitespace-pre-wrap">{msg.text}</div>
                 <div className="text-[10px] opacity-40 mt-1 text-right">
                   {new Date(msg.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
@@ -219,7 +209,7 @@ export default function GeminiChat() {
           {loading && (
             <div className="flex justify-start">
               <div className="bg-[#1a2235] border border-[#1e2d45] rounded-2xl rounded-tl-sm px-4 py-3">
-                <div className="text-xs text-violet-400 font-bold mb-1">🤖 HK Pro AI</div>
+                <div className="text-xs text-violet-400 font-bold mb-1">🤖 Toto Pro AI</div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -231,29 +221,20 @@ export default function GeminiChat() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
         <div className="flex gap-2 mt-auto pt-4 border-t border-[#1e2d45]">
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
+          <input type="text" value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
-            placeholder="Tanya tentang prediksi, analisis data, strategi..."
+            placeholder={`Tanya tentang prediksi ${mi.short}, analisis data, strategi...`}
             disabled={loading}
-            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 disabled:opacity-50"
-          />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim()}
-            className="btn-primary px-4"
-          >
+            className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 disabled:opacity-50" />
+          <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()} className="btn-primary px-4">
             {loading ? <span className="spinner !w-4 !h-4" /> : '➤'}
           </button>
         </div>
 
         <button
           onClick={() => {
-            setMessages([{ role: 'assistant', text: 'Chat dikosongkan. Saya siap membantu lagi! 🎰', timestamp: new Date().toISOString() }]);
+            setMessages([{ role: 'assistant', text: `Chat dikosongkan. Saya siap membantu lagi! ${mi.flag}`, timestamp: new Date().toISOString() }]);
             toast('Chat dikosongkan', 'info');
           }}
           className="text-xs text-slate-600 hover:text-slate-400 mt-2 self-end transition-colors"

@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchApi, type StatsData, type Row, type RekomendasiData, type WinrateData } from '../lib/api';
+import { fetchApi, type StatsData, type Row, type RekomendasiData, type WinrateData, type SyncStatusData } from '../lib/api';
 import { useToast } from '../components/Toast';
+import { useMarket, MARKET_INFO } from '../context/MarketContext';
 
 function todayStr() {
   const d = new Date();
@@ -25,12 +26,107 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
   );
 }
 
+// ── Sync Panel ────────────────────────────────────────────────────────────────
+function SyncPanel() {
+  const { toast } = useToast();
+  const [syncing, setSyncing] = useState<'all' | 'sgp' | 'sdy' | null>(null);
+  const qc = useQueryClient();
+
+  const { data, refetch } = useQuery<SyncStatusData>({
+    queryKey: ['sync-status'],
+    queryFn: () => fetchApi<SyncStatusData>('/sync/status'),
+    staleTime: 30_000,
+  });
+
+  async function handleSync(mkt?: 'sgp' | 'sdy') {
+    setSyncing(mkt ?? 'all');
+    try {
+      await fetchApi('/sync/run' + (mkt ? `?market=${mkt}` : ''), { method: 'POST' });
+      await refetch();
+      qc.invalidateQueries({ queryKey: ['stats'] });
+      qc.invalidateQueries({ queryKey: ['results'] });
+      qc.invalidateQueries({ queryKey: ['predict'] });
+      qc.invalidateQueries({ queryKey: ['rekomendasi'] });
+      qc.invalidateQueries({ queryKey: ['winrate'] });
+      toast(`Sync ${mkt ? mkt.toUpperCase() : 'SGP + SDY'} selesai`, 'success');
+    } catch (e) {
+      toast(`Sync gagal: ${String(e)}`, 'error');
+    } finally {
+      setSyncing(null);
+    }
+  }
+
+  return (
+    <div className="card border-slate-700/30 bg-[#0d1420]">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="font-bold text-slate-300 text-sm">🔄 Status Sinkronisasi</div>
+        <button
+          onClick={() => handleSync()}
+          disabled={!!syncing}
+          className="ml-auto btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+        >
+          {syncing === 'all'
+            ? <><span className="spinner !w-3 !h-3" /> Sync...</>
+            : '🔄 Sync Semua'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {(['sgp', 'sdy'] as const).map(m => {
+          const mi = MARKET_INFO[m];
+          const stat = data?.[m];
+          const missing = data?.missingDates?.[m] ?? 0;
+          return (
+            <div key={m} className={`rounded-xl border p-3 ${m === 'sgp' ? 'border-red-900/40 bg-red-950/10' : 'border-amber-900/40 bg-amber-950/10'}`}>
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-base">{mi.flag}</span>
+                <span className={`font-bold text-xs ${m === 'sgp' ? 'text-red-400' : 'text-amber-400'}`}>{mi.short}</span>
+                {missing > 0 && (
+                  <span className="ml-auto text-xs bg-orange-900/40 text-orange-400 border border-orange-800/40 px-1.5 py-0.5 rounded-full">
+                    {missing} pending
+                  </span>
+                )}
+              </div>
+              <div className="space-y-0.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total draw</span>
+                  <span className="text-slate-300 font-bold">{stat?.total ?? '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Terakhir</span>
+                  <span className="text-slate-300 font-mono text-xs">{stat?.lastDate ?? '—'}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleSync(m)}
+                disabled={!!syncing}
+                className="mt-2 w-full text-xs py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-40 flex items-center justify-center gap-1"
+              >
+                {syncing === m
+                  ? <><span className="spinner !w-3 !h-3" /> Syncing...</>
+                  : `↻ Sync ${mi.short}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-2 text-xs text-slate-600 text-center">
+        Auto-sync: SGP (Sen·Rab·Kam·Sab·Min 23:05 WIB) · SDY (setiap hari 23:05 WIB)
+      </div>
+    </div>
+  );
+}
+
 // ── Rekomendasi Hari Ini ─────────────────────────────────────────────────────
 function RekomendasiHariIni() {
   const { toast } = useToast();
+  const { market } = useMarket();
+  const mi = MARKET_INFO[market];
+
   const { data, isLoading, error } = useQuery<RekomendasiData>({
-    queryKey: ['rekomendasi'],
-    queryFn: () => fetchApi<RekomendasiData>('/rekomendasi'),
+    queryKey: ['rekomendasi', market],
+    queryFn: () => fetchApi<RekomendasiData>(`/rekomendasi?market=${market}`),
     staleTime: 120_000,
   });
 
@@ -40,14 +136,12 @@ function RekomendasiHariIni() {
   function handleCopy() {
     if (!data) return;
     const lines = [
-      `🎯 Rekomendasi HK Toto — ${data.tanggal}`,
+      `🎯 Rekomendasi ${mi.short} Toto — ${data.tanggal}`,
       `Angka Kuat: ${data.angkaKuat.join(' · ')}`,
       `Confidence: ${data.confidence}%`,
       '',
       `No  | 4D   | 3D  | 2D`,
-      ...data.predictions.map(p =>
-        `${String(p.rank).padStart(2,'0')}  | ${p.num4d} | ${p.num3d} | ${p.num2d}`
-      ),
+      ...data.predictions.map(p => `${String(p.rank).padStart(2,'0')}  | ${p.num4d} | ${p.num3d} | ${p.num2d}`),
       '',
       `3D Pasang: ${unique3D.join(' · ')}`,
       `2D Pasang: ${unique2D.join(' · ')}`,
@@ -75,12 +169,11 @@ function RekomendasiHariIni() {
 
   return (
     <div className="card border-amber-500/40 bg-gradient-to-br from-[#0d1420] to-[#0f1a2e]">
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="text-amber-400 font-bold text-lg tracking-wide">🎯 Rekomendasi Hari Ini</div>
           <div className="text-xs text-slate-500 mt-0.5">
-            Gabungan sinyal: Posisi · Shio · Pola Ikutan &nbsp;·&nbsp; {data.signals.totalDraws} draw
+            {mi.flag} {mi.short} · Gabungan sinyal: Posisi · Shio · Pola Ikutan &nbsp;·&nbsp; {data.signals.totalDraws} draw
           </div>
         </div>
         <button
@@ -91,38 +184,27 @@ function RekomendasiHariIni() {
         </button>
       </div>
 
-      {/* Confidence bar */}
       <div className="flex items-center gap-3 mb-4">
         <span className="text-xs text-slate-500 shrink-0">Confidence</span>
         <div className="flex-1 bg-slate-700/60 rounded-full h-2">
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${data.confidence}%`, background: 'linear-gradient(90deg,#f59e0b,#ef4444)' }}
-          />
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${data.confidence}%`, background: 'linear-gradient(90deg,#f59e0b,#ef4444)' }} />
         </div>
         <span className="text-amber-400 font-bold text-sm shrink-0">{data.confidence}%</span>
       </div>
 
-      {/* 5 Angka Kuat */}
       <div className="mb-4">
         <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">5 Angka Kuat (BB)</div>
         <div className="flex gap-2 flex-wrap">
           {data.angkaKuat.map((d, i) => (
-            <div
-              key={d}
-              className="w-11 h-11 rounded-full flex items-center justify-center font-black text-xl text-white shadow-lg"
-              style={{ background: `${BALL_COLORS[i]}22`, border: `2px solid ${BALL_COLORS[i]}`, color: BALL_COLORS[i] }}
-            >
+            <div key={d} className="w-11 h-11 rounded-full flex items-center justify-center font-black text-xl text-white shadow-lg"
+              style={{ background: `${BALL_COLORS[i]}22`, border: `2px solid ${BALL_COLORS[i]}`, color: BALL_COLORS[i] }}>
               {d}
             </div>
           ))}
-          <div className="flex items-center text-xs text-slate-500 ml-2">
-            → kombinasi 4D di bawah
-          </div>
+          <div className="flex items-center text-xs text-slate-500 ml-2">→ kombinasi 4D di bawah</div>
         </div>
       </div>
 
-      {/* Sinyal aktif */}
       <div className="flex flex-wrap gap-2 mb-4">
         {data.signals.shioBonus.map(s => (
           <span key={s} className="px-2 py-0.5 bg-purple-900/40 border border-purple-700/50 rounded text-purple-300 text-xs">🔮 {s}</span>
@@ -132,7 +214,6 @@ function RekomendasiHariIni() {
         ))}
       </div>
 
-      {/* Top 10 Predictions Table */}
       <div className="overflow-x-auto rounded-lg border border-slate-700/50">
         <table className="w-full text-sm">
           <thead>
@@ -145,15 +226,10 @@ function RekomendasiHariIni() {
           </thead>
           <tbody>
             {data.predictions.map((p, i) => (
-              <tr
-                key={p.num4d}
-                className={`border-b border-slate-800/50 transition-colors hover:bg-white/3 ${i === 0 ? 'bg-amber-500/5' : ''}`}
-              >
+              <tr key={p.num4d} className={`border-b border-slate-800/50 transition-colors hover:bg-white/3 ${i === 0 ? 'bg-amber-500/5' : ''}`}>
                 <td className="text-center py-2 px-3 text-slate-500 text-xs">{p.rank}</td>
                 <td className="text-center py-2 px-3">
-                  <span className={`font-black font-mono text-base tracking-widest ${i === 0 ? 'text-amber-400' : 'text-white'}`}>
-                    {p.num4d}
-                  </span>
+                  <span className={`font-black font-mono text-base tracking-widest ${i === 0 ? 'text-amber-400' : 'text-white'}`}>{p.num4d}</span>
                   {i === 0 && <span className="ml-1.5 text-xs text-amber-500/80">★</span>}
                 </td>
                 <td className="text-center py-2 px-3 font-mono text-amber-300/80 text-sm">{p.num3d}</td>
@@ -164,9 +240,7 @@ function RekomendasiHariIni() {
         </table>
       </div>
 
-      {/* Unique 3D & 2D untuk dipasang */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-        {/* 3D Pasang */}
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">🎲 3D Pasang</span>
@@ -174,14 +248,10 @@ function RekomendasiHariIni() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {unique3D.map(n => (
-              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-amber-900/30 border border-amber-700/40 rounded text-amber-300">
-                {n}
-              </span>
+              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-amber-900/30 border border-amber-700/40 rounded text-amber-300">{n}</span>
             ))}
           </div>
         </div>
-
-        {/* 2D Pasang */}
         <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">🎲 2D Pasang</span>
@@ -189,9 +259,7 @@ function RekomendasiHariIni() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {unique2D.map(n => (
-              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-green-900/30 border border-green-700/40 rounded text-green-300">
-                {n}
-              </span>
+              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-green-900/30 border border-green-700/40 rounded text-green-300">{n}</span>
             ))}
           </div>
         </div>
@@ -206,9 +274,10 @@ function RekomendasiHariIni() {
 
 // ── Win Rate Tracker ─────────────────────────────────────────────────────────
 function WinRateTracker() {
+  const { market } = useMarket();
   const { data, isLoading } = useQuery<WinrateData>({
-    queryKey: ['winrate'],
-    queryFn: () => fetchApi<WinrateData>('/rekomendasi/winrate'),
+    queryKey: ['winrate', market],
+    queryFn: () => fetchApi<WinrateData>(`/rekomendasi/winrate?market=${market}`),
     staleTime: 60_000,
   });
 
@@ -218,7 +287,6 @@ function WinRateTracker() {
       <div className="flex justify-center py-4"><div className="spinner" /></div>
     </div>
   );
-
   if (!data) return null;
 
   const { winrate, history, totalChecked } = data;
@@ -227,15 +295,10 @@ function WinRateTracker() {
     <div className="flex flex-col gap-1.5">
       <div className="flex justify-between items-baseline">
         <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">{label}</span>
-        <span className="font-black text-lg" style={{ color }}>
-          {wr.total > 0 ? `${wr.pct}%` : '—'}
-        </span>
+        <span className="font-black text-lg" style={{ color }}>{wr.total > 0 ? `${wr.pct}%` : '—'}</span>
       </div>
       <div className="bg-slate-700/60 rounded-full h-2.5">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{ width: wr.total > 0 ? `${wr.pct}%` : '0%', background: color }}
-        />
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: wr.total > 0 ? `${wr.pct}%` : '0%', background: color }} />
       </div>
       <div className="text-xs text-slate-500">{wr.hits}/{wr.total} tembus</div>
     </div>
@@ -259,14 +322,11 @@ function WinRateTracker() {
         </div>
       ) : (
         <>
-          {/* Win Rate Bars */}
           <div className="grid grid-cols-3 gap-4 mb-5">
             <WRBar label="4D" wr={winrate['4d']} color="#f59e0b" />
             <WRBar label="3D" wr={winrate['3d']} color="#3b82f6" />
             <WRBar label="2D" wr={winrate['2d']} color="#10b981" />
           </div>
-
-          {/* History table */}
           {checked.length > 0 && (
             <div className="overflow-x-auto rounded-lg border border-slate-700/40">
               <table className="w-full text-xs">
@@ -286,21 +346,9 @@ function WinRateTracker() {
                       <td className="py-2 px-3 text-slate-400">{h.based_on_date}</td>
                       <td className="py-2 px-3 font-mono text-slate-300">{h.top3_4d.join(', ')}</td>
                       <td className="py-2 px-3 font-mono font-bold text-white">{h.actual_4d}</td>
-                      <td className="text-center py-2 px-2">
-                        {h.hit_4d
-                          ? <span className="text-green-400 font-bold">✓</span>
-                          : <span className="text-slate-600">✗</span>}
-                      </td>
-                      <td className="text-center py-2 px-2">
-                        {h.hit_3d
-                          ? <span className="text-green-400 font-bold">✓</span>
-                          : <span className="text-slate-600">✗</span>}
-                      </td>
-                      <td className="text-center py-2 px-2">
-                        {h.hit_2d
-                          ? <span className="text-green-400 font-bold">✓</span>
-                          : <span className="text-slate-600">✗</span>}
-                      </td>
+                      <td className="text-center py-2 px-2">{h.hit_4d ? <span className="text-green-400 font-bold">✓</span> : <span className="text-slate-600">✗</span>}</td>
+                      <td className="text-center py-2 px-2">{h.hit_3d ? <span className="text-green-400 font-bold">✓</span> : <span className="text-slate-600">✗</span>}</td>
+                      <td className="text-center py-2 px-2">{h.hit_2d ? <span className="text-green-400 font-bold">✓</span> : <span className="text-slate-600">✗</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -316,6 +364,8 @@ function WinRateTracker() {
 // ── Quick Input ──────────────────────────────────────────────────────────────
 function QuickInput({ onSaved }: { onSaved: () => void }) {
   const { toast } = useToast();
+  const { market } = useMarket();
+  const mi = MARKET_INFO[market];
   const [date, setDate] = useState(todayStr());
   const [angka, setAngka] = useState('');
   const [saving, setSaving] = useState(false);
@@ -330,9 +380,9 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
     try {
       const saved = await fetchApi<Row>('/results', {
         method: 'POST',
-        body: JSON.stringify({ draw_date: date, result_4d: angka }),
+        body: JSON.stringify({ draw_date: date, result_4d: angka, market }),
       });
-      toast(`Tersimpan: ${saved.result_4d} · 3D: ${saved.result_3d} · 2D: ${saved.result_2d}`, 'success');
+      toast(`${mi.short} Tersimpan: ${saved.result_4d} · 3D: ${saved.result_3d} · 2D: ${saved.result_2d}`, 'success');
       setAngka('');
       const next = new Date(date);
       next.setDate(next.getDate() + 1);
@@ -349,41 +399,25 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="card border-slate-600/30 bg-[#0d1420]">
       <div className="card-header">
-        ➕ Input Result Hari Ini
+        ➕ Input Result {mi.flag} {mi.short}
         <span className="ml-auto text-xs text-slate-500">Update manual setelah draw keluar</span>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500 uppercase tracking-wide font-medium">Tanggal</label>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 w-full sm:w-40"
-          />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 w-full sm:w-40" />
         </div>
-
         <div className="flex flex-col gap-1 flex-1">
           <label className="text-xs text-slate-500 uppercase tracking-wide font-medium">Nomor 4D (0000–9999)</label>
           <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="numeric"
-              pattern="\d{1,4}"
-              maxLength={4}
-              value={angka}
-              onChange={e => setAngka(e.target.value.replace(/\D/g,'').slice(0,4))}
+            <input ref={inputRef} type="text" inputMode="numeric" pattern="\d{1,4}" maxLength={4}
+              value={angka} onChange={e => setAngka(e.target.value.replace(/\D/g,'').slice(0,4))}
               onKeyDown={e => e.key === 'Enter' && handleSave()}
               placeholder="contoh: 1064"
-              className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-xl font-black font-mono text-white tracking-widest text-center focus:outline-none focus:border-amber-500"
-            />
-            <button
-              onClick={handleSave}
-              disabled={saving || angka.length === 0}
-              className="btn-primary px-5 text-base disabled:opacity-40"
-            >
+              className="flex-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg px-3 py-2 text-xl font-black font-mono text-white tracking-widest text-center focus:outline-none focus:border-amber-500" />
+            <button onClick={handleSave} disabled={saving || angka.length === 0} className="btn-primary px-5 text-base disabled:opacity-40">
               {saving ? <span className="spinner !w-4 !h-4" /> : '💾 Simpan'}
             </button>
           </div>
@@ -414,9 +448,11 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
 // ── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const qc = useQueryClient();
+  const { market } = useMarket();
+
   const { data, isLoading, error } = useQuery<StatsData>({
-    queryKey: ['stats'],
-    queryFn: () => fetchApi<StatsData>('/stats'),
+    queryKey: ['stats', market],
+    queryFn: () => fetchApi<StatsData>(`/stats?market=${market}`),
     staleTime: 60_000,
   });
 
@@ -426,6 +462,7 @@ export default function Dashboard() {
     qc.invalidateQueries({ queryKey: ['predict'] });
     qc.invalidateQueries({ queryKey: ['rekomendasi'] });
     qc.invalidateQueries({ queryKey: ['winrate'] });
+    qc.invalidateQueries({ queryKey: ['sync-status'] });
   }
 
   const latest = data?.latestResult;
@@ -433,14 +470,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-
-      {/* ── 1. Rekomendasi Hari Ini (teratas) ── */}
       <RekomendasiHariIni />
-
-      {/* ── 2. Win Rate Tracker ── */}
       <WinRateTracker />
+      <SyncPanel />
 
-      {/* ── 3. Stats Row ── */}
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="card text-center">
@@ -468,7 +501,6 @@ export default function Dashboard() {
       {isLoading && <div className="flex justify-center py-6"><div className="spinner" /></div>}
       {error && <div className="text-red-400 text-center py-4 text-sm">{String(error)}</div>}
 
-      {/* ── 3. Latest Result ── */}
       {latest && (
         <div className="card">
           <div className="card-header">🎰 Hasil Draw Terakhir <span className="text-xs text-slate-500 ml-auto">{latest.draw_date}</span></div>
@@ -487,7 +519,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 4. Hot & Overdue ── */}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="card">
@@ -512,7 +543,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 5. Positional Analysis ── */}
       {data && (
         <div className="card">
           <div className="card-header">📊 Analisis per Posisi (AS · KOP · KEPALA · EKOR)</div>
@@ -541,7 +571,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 6. Recent 10 ── */}
       {data && (
         <div className="card">
           <div className="card-header">📋 10 Draw Terakhir</div>
@@ -570,9 +599,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 7. Input Result (paling bawah) ── */}
       <QuickInput onSaved={handleSaved} />
-
     </div>
   );
 }

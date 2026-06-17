@@ -147,9 +147,10 @@ function buildPolaSignals(rows: Row[]) {
 // ─── /api/stats ────────────────────────────────────────────────────────────
 
 router.get("/stats", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
   const rows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 100`
-  ).all() as Row[];
+    `SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 100`
+  ).all(market) as Row[];
 
   if (rows.length === 0) {
     res.json({ totalDraws: 0, recentResults: [], posStats: [], hot2D: [], overdue2D: [], freq2D: [], freq3D: [] });
@@ -161,7 +162,6 @@ router.get("/stats", (req, res): void => {
   const freq2D = build2dFreq(rows);
   const freq3D = build3dFreq(rows);
 
-  // Positional analysis
   const posStats = [0, 1, 2, 3].map((p) => {
     const digits = Array.from({ length: 10 }, (_, d) => ({
       digit: d,
@@ -175,7 +175,6 @@ router.get("/stats", (req, res): void => {
     return { pos: p + 1, label: ["AS(P1)", "KOP(P2)", "KEPALA", "EKOR"][p], digits, hotDigit, coldDigit, freqDigit };
   });
 
-  // 2D analysis
   const sorted2D = Object.entries(freq2D).map(([num, { count, lastIdx }]) => ({
     number: num,
     count,
@@ -188,13 +187,11 @@ router.get("/stats", (req, res): void => {
   const freq2DTop = [...sorted2D].sort((a, b) => b.count - a.count || a.lastDrawsAgo - b.lastDrawsAgo).slice(0, 12);
   const overdue2D = sorted2D.filter((x) => x.lastDrawsAgo > 10).sort((a, b) => b.lastDrawsAgo - a.lastDrawsAgo).slice(0, 12);
 
-  // 3D frequency
   const freq3DTop = Object.entries(freq3D)
     .map(([num, { count, lastIdx }]) => ({ number: num, count, lastDrawsAgo: lastIdx }))
     .sort((a, b) => b.count - a.count || a.lastDrawsAgo - b.lastDrawsAgo)
     .slice(0, 15);
 
-  // Ekor / Kepala analysis
   const kepalaCounts = Array(10).fill(0);
   const ekorCounts = Array(10).fill(0);
   const kepalaSeen = Array(10).fill(total);
@@ -210,14 +207,12 @@ router.get("/stats", (req, res): void => {
   });
 
   const kepalaStats = Array.from({ length: 10 }, (_, d) => ({
-    digit: d,
-    count: kepalaCounts[d],
+    digit: d, count: kepalaCounts[d],
     pct: parseFloat(((kepalaCounts[d] / total) * 100).toFixed(1)),
     lastDrawsAgo: kepalaSeen[d],
   }));
   const ekorStats = Array.from({ length: 10 }, (_, d) => ({
-    digit: d,
-    count: ekorCounts[d],
+    digit: d, count: ekorCounts[d],
     pct: parseFloat(((ekorCounts[d] / total) * 100).toFixed(1)),
     lastDrawsAgo: ekorSeen[d],
   }));
@@ -226,13 +221,7 @@ router.get("/stats", (req, res): void => {
     totalDraws: total,
     latestResult: rows[0],
     recentResults: rows.slice(0, 10),
-    posStats,
-    hot2D,
-    freq2D: freq2DTop,
-    overdue2D,
-    freq3D: freq3DTop,
-    kepalaStats,
-    ekorStats,
+    posStats, hot2D, freq2D: freq2DTop, overdue2D, freq3D: freq3DTop, kepalaStats, ekorStats,
   });
 });
 
@@ -241,10 +230,11 @@ router.get("/stats", (req, res): void => {
 router.get("/predict", (req, res): void => {
   const type = (req.query["type"] as string) ?? "2d";
   const mode = (req.query["mode"] as string) ?? "hot";
+  const market = (req.query["market"] as string) ?? "sgp";
 
   const rows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`
-  ).all() as Row[];
+    `SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`
+  ).all(market) as Row[];
 
   if (rows.length < 3) {
     res.status(400).json({ error: "Data kurang, tambahkan minimal 3 result dahulu." });
@@ -253,7 +243,6 @@ router.get("/predict", (req, res): void => {
 
   const total = rows.length;
 
-  // Build exclusion sets from last 14 draws
   const recent14 = rows.slice(0, 14);
   const recentSet4D = new Set(recent14.map(r => r.result_4d.padStart(4, "0")));
   const recentSet3D = new Set(recent14.map(r => r.result_4d.padStart(4, "0").slice(1)));
@@ -272,54 +261,32 @@ router.get("/predict", (req, res): void => {
       return { number: num, count, lastDrawsAgo: lastIdx, score };
     });
 
-    // Also generate positional-based 2D candidates
     const { posFreq, lastSeen } = buildPosFreq(rows);
-    const posKep = Array.from({ length: 10 }, (_, d) => ({
-      d,
-      w: posFreq[2]![d]! / total + 1 / (lastSeen[2]![d]! + 1),
-    }));
-    const posEkor = Array.from({ length: 10 }, (_, d) => ({
-      d,
-      w: posFreq[3]![d]! / total + 1 / (lastSeen[3]![d]! + 1),
-    }));
+    const posKep = Array.from({ length: 10 }, (_, d) => ({ d, w: posFreq[2]![d]! / total + 1 / (lastSeen[2]![d]! + 1) }));
+    const posEkor = Array.from({ length: 10 }, (_, d) => ({ d, w: posFreq[3]![d]! / total + 1 / (lastSeen[3]![d]! + 1) }));
     const hotKep = posKep.sort((a, b) => b.w - a.w)[0]!.d;
     const hotEkor = posEkor.sort((a, b) => b.w - a.w)[0]!.d;
     const positionalNum = `${hotKep}${hotEkor}`;
 
     const sorted = all2D.sort((a, b) => b.score - a.score);
-
-    // Separate excluded from valid
     const excludedNums = sorted.filter(x => recentSet2D.has(x.number)).slice(0, 5).map(x => x.number);
     const valid = sorted.filter(x => !recentSet2D.has(x.number));
     const top = valid.slice(0, 8);
 
-    // Add positional candidate if not already there and not excluded
     if (!top.find((x) => x.number === positionalNum) && !recentSet2D.has(positionalNum)) {
       top.push({ number: positionalNum, count: freq2D[positionalNum]?.count ?? 0, lastDrawsAgo: freq2D[positionalNum]?.lastIdx ?? 99, score: 0.5 });
     }
 
     res.json({
-      type: "2d",
-      mode,
-      excludedNumbers: excludedNums,
+      type: "2d", mode, excludedNumbers: excludedNums,
       predictions: top.slice(0, 8).map((x) => ({
-        number: x.number,
-        count: x.count,
-        lastDrawsAgo: x.lastDrawsAgo,
+        number: x.number, count: x.count, lastDrawsAgo: x.lastDrawsAgo,
         score: Math.round(50 + x.score * 500),
-        reason:
-          x.lastDrawsAgo === 0
-            ? "🔥 Muncul di draw terbaru!"
-            : x.lastDrawsAgo < 3
-            ? `⚡ Sangat hot — ${x.lastDrawsAgo} draw lalu`
-            : x.count >= 2
-            ? `📊 Muncul ${x.count}x dalam data`
-            : x.lastDrawsAgo > 15
-            ? `🧊 Overdue — ${x.lastDrawsAgo} draw absen`
-            : `📈 Score analitik tinggi`,
+        reason: x.lastDrawsAgo === 0 ? "🔥 Muncul di draw terbaru!" : x.lastDrawsAgo < 3 ? `⚡ Sangat hot — ${x.lastDrawsAgo} draw lalu` : x.count >= 2 ? `📊 Muncul ${x.count}x dalam data` : x.lastDrawsAgo > 15 ? `🧊 Overdue — ${x.lastDrawsAgo} draw absen` : `📈 Score analitik tinggi`,
       })),
       totalDrawsAnalyzed: total,
     });
+
   } else if (type === "3d") {
     const freq3D = build3dFreq(rows);
     const { posFreq, lastSeen } = buildPosFreq(rows);
@@ -340,47 +307,29 @@ router.get("/predict", (req, res): void => {
     const valid3D = sorted3D.filter(x => !recentSet3D.has(x.number));
 
     const predictions = valid3D.slice(0, 5).map((x) => ({
-      number: x.number,
-      count: x.count,
-      lastDrawsAgo: x.lastDrawsAgo,
+      number: x.number, count: x.count, lastDrawsAgo: x.lastDrawsAgo,
       score: Math.round(50 + x.score * 400),
-      reason:
-        x.count >= 2
-          ? `Muncul ${x.count}x dalam data`
-          : x.lastDrawsAgo < 5
-          ? `Hot — ${x.lastDrawsAgo} draw lalu`
-          : x.lastDrawsAgo > 15
-          ? `Overdue — ${x.lastDrawsAgo} draw absen`
-          : "Pola posisional",
+      reason: x.count >= 2 ? `Muncul ${x.count}x dalam data` : x.lastDrawsAgo < 5 ? `Hot — ${x.lastDrawsAgo} draw lalu` : x.lastDrawsAgo > 15 ? `Overdue — ${x.lastDrawsAgo} draw absen` : "Pola posisional",
     }));
 
-    // Add positional-generated candidates (filtered)
     for (let attempt = 0; attempt < 5; attempt++) {
       const digits = [1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
       const num = digits.map(String).join("");
       if (!predictions.find((x) => x.number === num) && !recentSet3D.has(num)) {
-        predictions.push({
-          number: num,
-          count: freq3D[num]?.count ?? 0,
-          lastDrawsAgo: freq3D[num]?.lastIdx ?? 99,
-          score: Math.round(50 + Math.random() * 25),
-          reason: "Kombinasi digit terpanas per posisi",
-        });
+        predictions.push({ number: num, count: freq3D[num]?.count ?? 0, lastDrawsAgo: freq3D[num]?.lastIdx ?? 99, score: Math.round(50 + Math.random() * 25), reason: "Kombinasi digit terpanas per posisi" });
         if (predictions.length >= 7) break;
       }
     }
 
     res.json({ type: "3d", mode, excludedNumbers: excludedNums3D, predictions: predictions.slice(0, 7), totalDrawsAnalyzed: total });
+
   } else {
     // 4D
     const { posFreq, lastSeen } = buildPosFreq(rows);
-
     const allCandidates: { number: string; score: number; reason: string }[] = [];
 
-    // Strategy 1: hottest digit per position
     const hotDigits = [0, 1, 2, 3].map((p) => {
-      let best = 0;
-      let bestScore = -1;
+      let best = 0, bestScore = -1;
       for (let d = 0; d < 10; d++) {
         const s = posFreq[p]![d]! / total + 5 / (lastSeen[p]![d]! + 1);
         if (s > bestScore) { bestScore = s; best = d; }
@@ -390,7 +339,6 @@ router.get("/predict", (req, res): void => {
     const hot4D = hotDigits.map(String).join("").padStart(4, "0");
     allCandidates.push({ number: hot4D, score: 88, reason: "🔥 Digit terpanas setiap posisi" });
 
-    // Strategy 2: most frequent digit per position
     const freqDigits = [0, 1, 2, 3].map((p) => {
       let best = 0, bestCount = -1;
       for (let d = 0; d < 10; d++) {
@@ -399,26 +347,18 @@ router.get("/predict", (req, res): void => {
       return best;
     });
     const freq4D = freqDigits.map(String).join("").padStart(4, "0");
-    if (freq4D !== hot4D) {
-      allCandidates.push({ number: freq4D, score: 82, reason: "📊 Digit paling sering setiap posisi" });
-    }
+    if (freq4D !== hot4D) allCandidates.push({ number: freq4D, score: 82, reason: "📊 Digit paling sering setiap posisi" });
 
-    // Strategy 3: overdue
     const overdueDigits = [0, 1, 2, 3].map((p) => {
       let worst = 0, worstSeen = -1;
       for (let d = 0; d < 10; d++) {
-        if (lastSeen[p]![d]! > worstSeen && posFreq[p]![d]! > 0) {
-          worstSeen = lastSeen[p]![d]!; worst = d;
-        }
+        if (lastSeen[p]![d]! > worstSeen && posFreq[p]![d]! > 0) { worstSeen = lastSeen[p]![d]!; worst = d; }
       }
       return worst;
     });
     const overdue4D = overdueDigits.map(String).join("").padStart(4, "0");
-    if (!allCandidates.find((x) => x.number === overdue4D)) {
-      allCandidates.push({ number: overdue4D, score: 75, reason: "🧊 Digit overdue setiap posisi" });
-    }
+    if (!allCandidates.find((x) => x.number === overdue4D)) allCandidates.push({ number: overdue4D, score: 75, reason: "🧊 Digit overdue setiap posisi" });
 
-    // Strategy 4–8: weighted random picks
     for (let i = 0; i < 8; i++) {
       const digits = [0, 1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
       const num = digits.map(String).join("").padStart(4, "0");
@@ -427,12 +367,11 @@ router.get("/predict", (req, res): void => {
       }
     }
 
-    // Separate excluded from valid
     const excludedNums4D = allCandidates.filter(x => recentSet4D.has(x.number)).slice(0, 5).map(x => x.number);
     const valid4D = allCandidates.filter(x => !recentSet4D.has(x.number));
 
     const predictions = valid4D.slice(0, 8).map(x => {
-      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(x.number) as { c: number };
+      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ? AND market = ?").get(x.number, market) as { c: number };
       return { number: x.number, count: f.c, lastDrawsAgo: 0, score: x.score, reason: x.reason };
     });
 
@@ -441,17 +380,16 @@ router.get("/predict", (req, res): void => {
 });
 
 // ─── /api/bb-campuran ──────────────────────────────────────────────────────
-// Generate all 4D permutations (with repetition) from selected active digits,
-// score each using positional frequency analysis, return top 10.
 
 router.get("/bb-campuran", (req, res): void => {
   const rawDigits = (req.query["digits"] as string) ?? "";
   const mode = "balanced";
   const autoMode = !rawDigits || rawDigits.trim() === "";
+  const market = (req.query["market"] as string) ?? "sgp";
 
   const rows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`
-  ).all() as Row[];
+    `SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`
+  ).all(market) as Row[];
 
   if (rows.length < 3) {
     res.status(400).json({ error: "Data kurang, tambahkan minimal 3 result dahulu." });
@@ -461,19 +399,17 @@ router.get("/bb-campuran", (req, res): void => {
   const total = rows.length;
   const { posFreq, lastSeen } = buildPosFreq(rows);
 
-  // Score a single digit at a given position
   function posScore(pos: number, digit: number): number {
     const count = posFreq[pos]![digit]!;
     const seen = lastSeen[pos]![digit]!;
     const freqW = count / total;
     const recentW = 1 / (seen + 1);
     const overdueW = (seen + 1) / (total + 1);
-    if (mode === "hot")     return freqW * 0.4 + recentW * 0.6;
-    if (mode === "cold")    return (1 - freqW) * 0.5 + overdueW * 0.5;
+    if (mode === "hot")  return freqW * 0.4 + recentW * 0.6;
+    if (mode === "cold") return (1 - freqW) * 0.5 + overdueW * 0.5;
     return freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
   }
 
-  // Combined score of a digit across ALL 4 positions (used for auto-select)
   function digitTotalScore(digit: number): number {
     return posScore(0, digit) + posScore(1, digit) + posScore(2, digit) + posScore(3, digit);
   }
@@ -482,105 +418,59 @@ router.get("/bb-campuran", (req, res): void => {
   let autoSelectedInfo: { digit: number; score: number }[] = [];
 
   if (autoMode) {
-    // Auto-select top 5 digits by combined positional score
-    const ranked = Array.from({ length: 10 }, (_, d) => ({ digit: d, score: digitTotalScore(d) }))
-      .sort((a, b) => b.score - a.score);
+    const ranked = Array.from({ length: 10 }, (_, d) => ({ digit: d, score: digitTotalScore(d) })).sort((a, b) => b.score - a.score);
     autoSelectedInfo = ranked.slice(0, 5);
     activeDigits = autoSelectedInfo.map(x => x.digit).sort((a, b) => a - b);
   } else {
     activeDigits = [...new Set(rawDigits.replace(/\D/g, "").split("").map(Number))].sort((a, b) => a - b);
-    if (activeDigits.length < 2) {
-      res.status(400).json({ error: "Pilih minimal 2 digit aktif." });
-      return;
-    }
-    if (activeDigits.length > 9) {
-      res.status(400).json({ error: "Maksimal 9 digit aktif." });
-      return;
-    }
+    if (activeDigits.length < 2) { res.status(400).json({ error: "Pilih minimal 2 digit aktif." }); return; }
+    if (activeDigits.length > 9) { res.status(400).json({ error: "Maksimal 9 digit aktif." }); return; }
   }
 
-  // Build exclusion set: angka 4D yang sudah keluar dalam 14 draw terakhir
-  const recentDrawn = new Set(
-    rows.slice(0, 14).map(r => r.result_4d.padStart(4, "0"))
-  );
-
-  // Generate all combinations (with repetition): activeDigits^4
+  const recentDrawn = new Set(rows.slice(0, 14).map(r => r.result_4d.padStart(4, "0")));
   const n = activeDigits.length;
   const totalCombinations = n * n * n * n;
 
   const candidates: { number: string; score: number }[] = [];
-
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      for (let k = 0; k < n; k++) {
-        for (let l = 0; l < n; l++) {
-          const d0 = activeDigits[i]!;
-          const d1 = activeDigits[j]!;
-          const d2 = activeDigits[k]!;
-          const d3 = activeDigits[l]!;
-          const num = `${d0}${d1}${d2}${d3}`;
-          const score = posScore(0, d0) + posScore(1, d1) + posScore(2, d2) + posScore(3, d3);
-          candidates.push({ number: num, score });
-        }
-      }
-    }
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) for (let l = 0; l < n; l++) {
+    const d0 = activeDigits[i]!, d1 = activeDigits[j]!, d2 = activeDigits[k]!, d3 = activeDigits[l]!;
+    candidates.push({ number: `${d0}${d1}${d2}${d3}`, score: posScore(0, d0) + posScore(1, d1) + posScore(2, d2) + posScore(3, d3) });
   }
-
-  // Sort descending
   candidates.sort((a, b) => b.score - a.score);
 
-  // Filter out recently drawn numbers, take top 10 from remainder
   const filtered = candidates.filter(c => !recentDrawn.has(c.number.padStart(4, "0")));
   const excluded = candidates.filter(c => recentDrawn.has(c.number.padStart(4, "0"))).slice(0, 5);
   const top10 = filtered.slice(0, 10);
 
-  // Normalize scores to 0–100 range for display
   const maxScore = top10[0]?.score ?? 1;
   const minScore = filtered[filtered.length - 1]?.score ?? 0;
   const range = maxScore - minScore || 1;
 
   const predictions = top10.map((c, i) => {
     const s = c.number.padStart(4, "0");
-    const result3d = s.slice(1);
-    const result2d = s.slice(2);
-    const displayScore = Math.round(60 + ((c.score - minScore) / range) * 40);
-    const reason =
-      i === 0 ? "⭐ Kombinasi digit terkuat" :
-      i < 3   ? "🔥 Skor posisional tinggi" :
-      i < 6   ? "📊 Pola frekuensi baik" :
-                "📈 Kandidat alternatif";
-    return { number: s, result3d, result2d, score: displayScore, reason };
+    return {
+      number: s, result3d: s.slice(1), result2d: s.slice(2),
+      score: Math.round(60 + ((c.score - minScore) / range) * 40),
+      reason: i === 0 ? "⭐ Kombinasi digit terkuat" : i < 3 ? "🔥 Skor posisional tinggi" : i < 6 ? "📊 Pola frekuensi baik" : "📈 Kandidat alternatif",
+    };
   });
 
-  const excludedNumbers = excluded.map(c => c.number.padStart(4, "0"));
-
-  res.json({
-    autoMode,
-    activeDigits,
-    autoSelectedInfo,
-    totalCombinations,
-    excludedCount: recentDrawn.size,
-    excludedNumbers,
-    predictions,
-    totalDrawsAnalyzed: total,
-  });
+  res.json({ autoMode, activeDigits, autoSelectedInfo, totalCombinations, excludedCount: recentDrawn.size, excludedNumbers: excluded.map(c => c.number.padStart(4, "0")), predictions, totalDrawsAnalyzed: total });
 });
 
 // ─── /api/shio ─────────────────────────────────────────────────────────────
 
-router.get("/shio", (_req, res): void => {
-  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
-  if (rows.length === 0) { res.json({ shioStats: [], currentShio: null }); return; }
+router.get("/shio", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`).all(market) as Row[];
+  if (rows.length === 0) { res.json({ shioStats: [], currentShio: null, predictedShios: [], totalDraws: 0 }); return; }
   const total = rows.length;
 
   const shioStats = SHIO_DEF.map(s => {
     const nums = s.nums.map(n => String(n).padStart(2, "0"));
     let count = 0, lastIdx = total;
     rows.forEach((row, idx) => {
-      if (nums.includes(row.result_2d.padStart(2,"0"))) {
-        count++;
-        if (lastIdx === total) lastIdx = idx;
-      }
+      if (nums.includes(row.result_2d.padStart(2,"0"))) { count++; if (lastIdx === total) lastIdx = idx; }
     });
     const freqW = count / total;
     const recentW = 1 / (lastIdx + 1);
@@ -590,19 +480,15 @@ router.get("/shio", (_req, res): void => {
   }).sort((a, b) => b.score - a.score);
 
   const cur2D = rows[0]!.result_4d.padStart(4, "0").slice(2);
-  res.json({
-    currentShio: { ...getShio(cur2D), number: cur2D, date: rows[0]!.draw_date },
-    predictedShios: shioStats.slice(0, 3),
-    shioStats,
-    totalDraws: total,
-  });
+  res.json({ currentShio: { ...getShio(cur2D), number: cur2D, date: rows[0]!.draw_date }, predictedShios: shioStats.slice(0, 3), shioStats, totalDraws: total });
 });
 
 // ─── /api/pola-ikutan ──────────────────────────────────────────────────────
 
-router.get("/pola-ikutan", (_req, res): void => {
-  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
-  if (rows.length < 5) { res.json({ ekorPatterns: [], kepalaPatterns: [] }); return; }
+router.get("/pola-ikutan", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`).all(market) as Row[];
+  if (rows.length < 5) { res.json({ ekorPatterns: [], kepalaPatterns: [], lastResult: "0000", lastEkor: 0, lastKepala: 0, totalPairs: 0 }); return; }
 
   const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
   const kepalaTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
@@ -619,235 +505,165 @@ router.get("/pola-ikutan", (_req, res): void => {
   const lastKepala = parseInt(lastStr[2]!);
 
   const mkPatterns = (trans: number[][], from: number) =>
-    Array.from({ length: 10 }, (_, d) => ({
-      fromDigit: from, toDigit: d,
-      count: trans[from]![d]!,
-      total: trans[from]!.reduce((s, v) => s + v, 0),
-    })).filter(p => p.count > 0).sort((a, b) => b.count - a.count).slice(0, 5);
+    Array.from({ length: 10 }, (_, d) => ({ fromDigit: from, toDigit: d, count: trans[from]![d]!, total: trans[from]!.reduce((s, v) => s + v, 0) }))
+      .filter(p => p.count > 0).sort((a, b) => b.count - a.count).slice(0, 5);
 
-  res.json({
-    lastResult: lastStr,
-    lastEkor, lastKepala,
-    ekorPatterns: mkPatterns(ekorTrans, lastEkor),
-    kepalaPatterns: mkPatterns(kepalaTrans, lastKepala),
-    totalPairs: rows.length - 1,
-  });
+  res.json({ lastResult: lastStr, lastEkor, lastKepala, ekorPatterns: mkPatterns(ekorTrans, lastEkor), kepalaPatterns: mkPatterns(kepalaTrans, lastKepala), totalPairs: rows.length - 1 });
 });
 
 // ─── /api/angka-fix ────────────────────────────────────────────────────────
 
-router.get("/angka-fix", (_req, res): void => {
-  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+router.get("/angka-fix", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`).all(market) as Row[];
   if (rows.length < 5) { res.status(400).json({ error: "Data kurang, tambahkan minimal 5 draw." }); return; }
 
   const total = rows.length;
   const { posFreq, lastSeen } = buildPosFreq(rows);
-
-  // ── Signals ──
   const { topShios, shio2Ds } = buildShioSignals(rows, total);
   const { goodNextEkors } = buildPolaSignals(rows);
 
-  // ── Positional score ──
   function ps(pos: number, digit: number) {
     const c = posFreq[pos]![digit]!;
     const seen = lastSeen[pos]![digit]!;
     return (c/total)*0.4 + (1/(seen+1))*0.3 + ((seen+1)/(total+1))*0.3;
   }
 
-  // ── 4D/BB Fix via BB-campuran + boosts ──
   const digitScore = (d: number) => [0,1,2,3].reduce((s, p) => s + ps(p, d), 0);
   const top5 = Array.from({length:10},(_,d)=>d).sort((a,b)=>digitScore(b)-digitScore(a)).slice(0,5);
   const excluded4D  = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
-  // Hindari 3D/2D yang sama dengan hasil N draw terakhir
   const excluded3D_recent = new Set(rows.slice(0,7).map(r=>r.result_4d.padStart(4,"0").slice(1)));
   const excluded2D_recent = new Set(rows.slice(0,5).map(r=>r.result_4d.padStart(4,"0").slice(2)));
 
   const cands4D: { num: string; score: number }[] = [];
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
-    if (excluded4D.has(num)) continue;
-    // Hindari 3D/2D yang muncul di draw terakhir
-    if (excluded3D_recent.has(num.slice(1))) continue;
-    if (excluded2D_recent.has(num.slice(2))) continue;
+    if (excluded4D.has(num) || excluded3D_recent.has(num.slice(1)) || excluded2D_recent.has(num.slice(2))) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
-    if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;   // shio boost
-    if (goodNextEkors.has(d3))      score *= 1.12;   // pola boost
+    if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;
+    if (goodNextEkors.has(d3)) score *= 1.12;
     cands4D.push({ num, score });
   }
   cands4D.sort((a, b) => b.score - a.score);
   const fix4D = cands4D[0]?.num ?? "????";
 
-  // ── 2D Fix (independent from 2D frequency + boosts) ──
   const freq2D = build2dFreq(rows);
   const excluded2D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0").slice(2)));
   const all2D = Object.entries(freq2D)
     .filter(([num]) => !excluded2D.has(num))
     .map(([num, {count,lastIdx}]) => {
       let score = (count/total)*0.4+(1/(lastIdx+1))*0.3+((lastIdx+1)/(total+1))*0.3;
-      if (shio2Ds.has(num.padStart(2,"0")))               score *= 1.18;
+      if (shio2Ds.has(num.padStart(2,"0"))) score *= 1.18;
       if (goodNextEkors.has(parseInt(num[num.length-1]!))) score *= 1.12;
       return { num, score };
     }).sort((a,b)=>b.score-a.score);
   const fix2D = all2D[0]?.num ?? "??";
 
-  // ── 3D Fix ──
   const freq3D = build3dFreq(rows);
   const excluded3D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0").slice(1)));
   const all3D = Object.entries(freq3D)
     .filter(([num]) => !excluded3D.has(num))
-    .map(([num,{count,lastIdx}]) => ({
-      num,
-      score: (count/total)*0.4+(1/(lastIdx+1))*0.3+((lastIdx+1)/(total+1))*0.3,
-    })).sort((a,b)=>b.score-a.score);
-  // If all3D is empty (all excluded), fall back to best non-excluded 3D from 4D candidates
+    .map(([num,{count,lastIdx}]) => ({ num, score: (count/total)*0.4+(1/(lastIdx+1))*0.3+((lastIdx+1)/(total+1))*0.3 }))
+    .sort((a,b)=>b.score-a.score);
   const fix3D = all3D[0]?.num ?? fix4D.slice(1);
 
   const confidence = Math.min(95, Math.round(50 + (total / 60) * 45));
 
   res.json({
     fix: {
-      "4d": { number: fix4D,       shio: getShio(fix4D.slice(2)),  confidence },
-      "3d": { number: fix3D,       shio: getShio(fix3D.slice(1)),  confidence: Math.max(40, confidence - 10) },
-      "2d": { number: fix2D,       shio: getShio(fix2D),           confidence: Math.min(95, confidence + 5) },
-      "bb": { number: fix4D,       shio: getShio(fix4D.slice(2)),  confidence },
+      "4d": { number: fix4D, shio: getShio(fix4D.slice(2)), confidence },
+      "3d": { number: fix3D, shio: getShio(fix3D.slice(1)), confidence: Math.max(40, confidence - 10) },
+      "2d": { number: fix2D, shio: getShio(fix2D), confidence: Math.min(95, confidence + 5) },
+      "bb": { number: fix4D, shio: getShio(fix4D.slice(2)), confidence },
     },
-    signals: {
-      shioBonus: topShios,
-      ekorBonus: [...goodNextEkors],
-      totalDraws: total,
-    },
+    signals: { shioBonus: topShios, ekorBonus: [...goodNextEkors], totalDraws: total },
   });
 });
 
 // ─── /api/rekomendasi ──────────────────────────────────────────────────────
-// Satu suara: gabungkan semua sinyal → top 10 4D + turunan 3D/2D
 
-router.get("/rekomendasi", (_req, res): void => {
-  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+router.get("/rekomendasi", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 60`).all(market) as Row[];
   if (rows.length < 5) { res.status(400).json({ error: "Data kurang, tambahkan minimal 5 draw." }); return; }
 
   const total = rows.length;
   const { posFreq, lastSeen } = buildPosFreq(rows);
-
-  // ── Signals ──
   const { topShios, shio2Ds } = buildShioSignals(rows, total);
   const { goodNextEkors } = buildPolaSignals(rows);
 
-  // ── Positional score ──
   function ps(pos: number, digit: number) {
     const c = posFreq[pos]![digit]!;
     const seen = lastSeen[pos]![digit]!;
     return (c/total)*0.4 + (1/(seen+1))*0.3 + ((seen+1)/(total+1))*0.3;
   }
 
-  // ── Top 5 Angka Kuat ──
   const digitScore = (d: number) => [0,1,2,3].reduce((s, p) => s + ps(p, d), 0);
-  const top5 = Array.from({length:10},(_,d)=>d)
-    .sort((a,b)=>digitScore(b)-digitScore(a))
-    .slice(0,5);
+  const top5 = Array.from({length:10},(_,d)=>d).sort((a,b)=>digitScore(b)-digitScore(a)).slice(0,5);
 
-  // ── Generate top 10 4D dari top5 digits (BB-campuran) ──
   const excluded4D  = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
-  // Hindari 3D/2D yang sama dengan hasil N draw terakhir
   const excluded3D_recent = new Set(rows.slice(0,7).map(r=>r.result_4d.padStart(4,"0").slice(1)));
   const excluded2D_recent = new Set(rows.slice(0,5).map(r=>r.result_4d.padStart(4,"0").slice(2)));
 
   const cands4D: { num: string; score: number }[] = [];
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
-    if (excluded4D.has(num)) continue;
-    // Hindari 3D/2D yang muncul di draw terakhir
-    if (excluded3D_recent.has(num.slice(1))) continue;
-    if (excluded2D_recent.has(num.slice(2))) continue;
+    if (excluded4D.has(num) || excluded3D_recent.has(num.slice(1)) || excluded2D_recent.has(num.slice(2))) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
     if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;
-    if (goodNextEkors.has(d3))      score *= 1.12;
+    if (goodNextEkors.has(d3)) score *= 1.12;
     cands4D.push({ num, score });
   }
   cands4D.sort((a, b) => b.score - a.score);
 
-  // Ambil top 10 — hindari duplikat 3D/2D agar variatif
-  const seen3D = new Set<string>();
-  const seen2D = new Set<string>();
+  const seen3D = new Set<string>(), seen2D = new Set<string>();
   const top10: { rank: number; num4d: string; num3d: string; num2d: string; score: number }[] = [];
   for (const c of cands4D) {
     if (top10.length >= 10) break;
-    const n3d = c.num.slice(1);
-    const n2d = c.num.slice(2);
+    const n3d = c.num.slice(1), n2d = c.num.slice(2);
     if (seen3D.has(n3d) && seen2D.has(n2d)) continue;
-    seen3D.add(n3d);
-    seen2D.add(n2d);
+    seen3D.add(n3d); seen2D.add(n2d);
     top10.push({ rank: top10.length+1, num4d: c.num, num3d: n3d, num2d: n2d, score: Math.round(c.score*10000)/10000 });
   }
-
-  // Fallback jika kurang dari 10 (data sedikit) — isi dari cands tanpa filter
   if (top10.length < 10) {
     for (const c of cands4D) {
       if (top10.length >= 10) break;
       if (top10.some(t => t.num4d === c.num)) continue;
-      const n3d = c.num.slice(1);
-      const n2d = c.num.slice(2);
-      top10.push({ rank: top10.length+1, num4d: c.num, num3d: n3d, num2d: n2d, score: Math.round(c.score*10000)/10000 });
+      top10.push({ rank: top10.length+1, num4d: c.num, num3d: c.num.slice(1), num2d: c.num.slice(2), score: Math.round(c.score*10000)/10000 });
     }
   }
 
   const confidence = Math.min(90, Math.round(45 + (total / 60) * 45));
   const basedOnDate = rows[0]!.draw_date;
 
-  // ── Simpan ke rekomendasi_history (upsert by based_on_date) ──
   try {
-    const existing = db.prepare(
-      `SELECT id FROM rekomendasi_history WHERE based_on_date = ?`
-    ).get(basedOnDate) as { id: number } | undefined;
-
+    const existing = db.prepare(`SELECT id FROM rekomendasi_history WHERE market = ? AND based_on_date = ?`).get(market, basedOnDate) as { id: number } | undefined;
     if (!existing) {
-      db.prepare(`
-        INSERT INTO rekomendasi_history (based_on_date, angka_kuat, predictions_json, confidence)
-        VALUES (?, ?, ?, ?)
-      `).run(
-        basedOnDate,
-        top5.join(","),
-        JSON.stringify(top10),
-        confidence
-      );
+      db.prepare(`INSERT INTO rekomendasi_history (market, based_on_date, angka_kuat, predictions_json, confidence) VALUES (?, ?, ?, ?, ?)`)
+        .run(market, basedOnDate, top5.join(","), JSON.stringify(top10), confidence);
     }
-  } catch { /* simpan gagal tidak harus stop response */ }
+  } catch { /* non-fatal */ }
 
   res.json({
-    tanggal: basedOnDate,
-    angkaKuat: top5,
-    predictions: top10,
-    signals: {
-      shioBonus: topShios,
-      ekorBonus: [...goodNextEkors],
-      totalDraws: total,
-    },
+    tanggal: basedOnDate, angkaKuat: top5, predictions: top10,
+    signals: { shioBonus: topShios, ekorBonus: [...goodNextEkors], totalDraws: total },
     confidence,
   });
 });
 
 // ─── /api/rekomendasi/winrate ───────────────────────────────────────────────
 
-router.get("/rekomendasi/winrate", (_req, res): void => {
+router.get("/rekomendasi/winrate", (req, res): void => {
   interface RekRow {
-    id: number;
-    based_on_date: string;
-    angka_kuat: string;
-    predictions_json: string;
-    confidence: number;
-    actual_4d: string | null;
-    actual_3d: string | null;
-    actual_2d: string | null;
-    hit_4d: number;
-    hit_3d: number;
-    hit_2d: number;
-    checked_at: string | null;
-    created_at: string;
+    id: number; based_on_date: string; angka_kuat: string;
+    predictions_json: string; confidence: number;
+    actual_4d: string | null; actual_3d: string | null; actual_2d: string | null;
+    hit_4d: number; hit_3d: number; hit_2d: number;
+    checked_at: string | null; created_at: string;
   }
 
-  const rows = db.prepare(
-    `SELECT * FROM rekomendasi_history ORDER BY based_on_date DESC LIMIT 30`
-  ).all() as RekRow[];
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM rekomendasi_history WHERE market = ? ORDER BY based_on_date DESC LIMIT 30`).all(market) as RekRow[];
 
   const checked = rows.filter(r => r.actual_4d !== null);
   const total = checked.length;
@@ -862,12 +678,8 @@ router.get("/rekomendasi/winrate", (_req, res): void => {
       based_on_date: r.based_on_date,
       angka_kuat: r.angka_kuat.split(",").map(Number),
       top3_4d: preds.slice(0, 3).map(p => p.num4d),
-      actual_4d: r.actual_4d,
-      actual_3d: r.actual_3d,
-      actual_2d: r.actual_2d,
-      hit_4d: r.hit_4d === 1,
-      hit_3d: r.hit_3d === 1,
-      hit_2d: r.hit_2d === 1,
+      actual_4d: r.actual_4d, actual_3d: r.actual_3d, actual_2d: r.actual_2d,
+      hit_4d: r.hit_4d === 1, hit_3d: r.hit_3d === 1, hit_2d: r.hit_2d === 1,
       checked: r.actual_4d !== null,
     };
   });
@@ -884,21 +696,17 @@ router.get("/rekomendasi/winrate", (_req, res): void => {
 });
 
 // ─── /api/accuracy ─────────────────────────────────────────────────────────
-// Backtesting: for each draw (starting from draw #8), simulate prediction
-// using only prior data, check if actual result was in predicted list.
 
-router.get("/accuracy", (_req, res): void => {
-  const allRows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC`
-  ).all() as Row[];
+router.get("/accuracy", (req, res): void => {
+  const market = (req.query["market"] as string) ?? "sgp";
+  const allRows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC`).all(market) as Row[];
 
-  const MIN_PRIOR = 7; // need at least 7 prior draws to predict
+  const MIN_PRIOR = 7;
   if (allRows.length <= MIN_PRIOR) {
     res.json({ enough: false, message: "Tambahkan minimal 8 draw untuk melihat akurasi." });
     return;
   }
 
-  // Helpers (same logic as main endpoints, self-contained for backtesting)
   function simPosFreq(rows: Row[]) {
     const posFreq: number[][] = Array.from({ length: 4 }, () => Array(10).fill(0));
     const lastSeen: number[][] = Array.from({ length: 4 }, () => Array(10).fill(rows.length));
@@ -916,38 +724,24 @@ router.get("/accuracy", (_req, res): void => {
   function posScore(posFreq: number[][], lastSeen: number[][], total: number, pos: number, digit: number) {
     const count = posFreq[pos]![digit]!;
     const seen  = lastSeen[pos]![digit]!;
-    const freqW = count / total;
-    const recentW = 1 / (seen + 1);
-    const overdueW = (seen + 1) / (total + 1);
-    return freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+    return (count/total)*0.4 + (1/(seen+1))*0.3 + ((seen+1)/(total+1))*0.3;
   }
 
-  // Predict top-N 4D using BB campuran approach
   function predict4D(prior: Row[], topN: number): string[] {
     if (prior.length < 3) return [];
     const total = prior.length;
     const { posFreq, lastSeen } = simPosFreq(prior);
-    // Auto-select top 5 digits by combined score
-    const digitScore = (d: number) =>
-      [0,1,2,3].reduce((sum, p) => sum + posScore(posFreq, lastSeen, total, p, d), 0);
-    const top5digits = Array.from({ length: 10 }, (_, d) => d)
-      .sort((a, b) => digitScore(b) - digitScore(a))
-      .slice(0, 5);
-    // Generate all combinations
+    const digitScore = (d: number) => [0,1,2,3].reduce((sum, p) => sum + posScore(posFreq, lastSeen, total, p, d), 0);
+    const top5digits = Array.from({ length: 10 }, (_, d) => d).sort((a, b) => digitScore(b) - digitScore(a)).slice(0, 5);
     const candidates: { num: string; score: number }[] = [];
-    for (const d0 of top5digits) for (const d1 of top5digits)
-      for (const d2 of top5digits) for (const d3 of top5digits) {
-        const num = `${d0}${d1}${d2}${d3}`;
-        const score = posScore(posFreq, lastSeen, total, 0, d0) +
-                      posScore(posFreq, lastSeen, total, 1, d1) +
-                      posScore(posFreq, lastSeen, total, 2, d2) +
-                      posScore(posFreq, lastSeen, total, 3, d3);
-        candidates.push({ num, score });
-      }
+    for (const d0 of top5digits) for (const d1 of top5digits) for (const d2 of top5digits) for (const d3 of top5digits) {
+      const num = `${d0}${d1}${d2}${d3}`;
+      const score = posScore(posFreq, lastSeen, total, 0, d0) + posScore(posFreq, lastSeen, total, 1, d1) + posScore(posFreq, lastSeen, total, 2, d2) + posScore(posFreq, lastSeen, total, 3, d3);
+      candidates.push({ num, score });
+    }
     return candidates.sort((a, b) => b.score - a.score).slice(0, topN).map(c => c.num);
   }
 
-  // Predict top-N 3D from frequency
   function predict3D(prior: Row[], topN: number): string[] {
     if (prior.length < 3) return [];
     const total = prior.length;
@@ -959,16 +753,10 @@ router.get("/accuracy", (_req, res): void => {
       if (freq[k]!.lastIdx === total) freq[k]!.lastIdx = idx;
     });
     return Object.entries(freq)
-      .map(([num, { count, lastIdx }]) => ({
-        num,
-        score: (count / total) * 0.4 + (1 / (lastIdx + 1)) * 0.3 + ((lastIdx + 1) / (total + 1)) * 0.3,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topN)
-      .map(x => x.num);
+      .map(([num, { count, lastIdx }]) => ({ num, score: (count/total)*0.4 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.3 }))
+      .sort((a, b) => b.score - a.score).slice(0, topN).map(x => x.num);
   }
 
-  // Predict top-N 2D from frequency
   function predict2D(prior: Row[], topN: number): string[] {
     if (prior.length < 3) return [];
     const total = prior.length;
@@ -980,31 +768,22 @@ router.get("/accuracy", (_req, res): void => {
       if (freq[k]!.lastIdx === total) freq[k]!.lastIdx = idx;
     });
     return Object.entries(freq)
-      .map(([num, { count, lastIdx }]) => ({
-        num,
-        score: (count / total) * 0.4 + (1 / (lastIdx + 1)) * 0.3 + ((lastIdx + 1) / (total + 1)) * 0.3,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topN)
-      .map(x => x.num);
+      .map(([num, { count, lastIdx }]) => ({ num, score: (count/total)*0.4 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.3 }))
+      .sort((a, b) => b.score - a.score).slice(0, topN).map(x => x.num);
   }
 
-  // Run backtesting
   const history: { date: string; actual4d: string; actual3d: string; actual2d: string; hit4d: boolean; hit3d: boolean; hit2d: boolean }[] = [];
   let hits4d = 0, hits3d = 0, hits2d = 0, total = 0;
 
   for (let i = 0; i < allRows.length - MIN_PRIOR; i++) {
     const testRow = allRows[i]!;
-    const prior = allRows.slice(i + 1); // older draws
+    const prior = allRows.slice(i + 1);
     const pred4d = predict4D(prior, 10);
     const pred3d = predict3D(prior, 7);
     const pred2d = predict2D(prior, 8);
     const a4d = testRow.result_4d.padStart(4, "0");
-    const a3d = a4d.slice(1);
-    const a2d = a4d.slice(2);
-    const h4d = pred4d.includes(a4d);
-    const h3d = pred3d.includes(a3d);
-    const h2d = pred2d.includes(a2d);
+    const a3d = a4d.slice(1), a2d = a4d.slice(2);
+    const h4d = pred4d.includes(a4d), h3d = pred3d.includes(a3d), h2d = pred2d.includes(a2d);
     if (h4d) hits4d++;
     if (h3d) hits3d++;
     if (h2d) hits2d++;
@@ -1015,35 +794,26 @@ router.get("/accuracy", (_req, res): void => {
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
   res.json({
-    enough: true,
-    totalTested: total,
+    enough: true, totalTested: total,
     winrate: {
       "4d": { hits: hits4d, total, pct: pct(hits4d) },
       "3d": { hits: hits3d, total, pct: pct(hits3d) },
       "2d": { hits: hits2d, total, pct: pct(hits2d) },
     },
-    history: history.slice(0, 20), // last 20 draws
+    history: history.slice(0, 20),
   });
 });
 
 // ─── /api/history-chart ────────────────────────────────────────────────────
 
 router.get("/history-chart", (req, res) => {
-  const rows = db.prepare(
-    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 30`
-  ).all() as Row[];
+  const market = (req.query["market"] as string) ?? "sgp";
+  const rows = db.prepare(`SELECT * FROM hk4d_results WHERE market = ? ORDER BY draw_date DESC LIMIT 30`).all(market) as Row[];
 
   const data = rows.reverse().map((r) => {
     const s = r.result_4d.padStart(4, "0");
     const digits = [parseInt(s[0]!), parseInt(s[1]!), parseInt(s[2]!), parseInt(s[3]!)];
-    return {
-      date: r.draw_date,
-      result_4d: r.result_4d,
-      result_2d: r.result_2d,
-      digitSum: digits.reduce((a, b) => a + b, 0),
-      ekor: digits[3],
-      kepala: digits[2],
-    };
+    return { date: r.draw_date, result_4d: r.result_4d, result_2d: r.result_2d, digitSum: digits.reduce((a, b) => a + b, 0), ekor: digits[3], kepala: digits[2] };
   });
 
   res.json({ data });

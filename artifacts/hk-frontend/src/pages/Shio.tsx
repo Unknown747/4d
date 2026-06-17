@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchApi, type ShioData } from '../lib/api';
+import { useMarket, MARKET_INFO } from '../context/MarketContext';
 
 export default function Shio() {
+  const { market } = useMarket();
+  const mi = MARKET_INFO[market];
+
   const { data, isLoading, error } = useQuery<ShioData>({
-    queryKey: ['shio'],
-    queryFn: () => fetchApi<ShioData>('/shio'),
+    queryKey: ['shio', market],
+    queryFn: () => fetchApi<ShioData>(`/shio?market=${market}`),
     staleTime: 60_000,
   });
 
@@ -24,7 +28,10 @@ export default function Shio() {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card">
-          <div className="card-header">🔮 Shio Terprediksi <span className="text-xs text-slate-500 ml-auto">{data.totalDraws} draw</span></div>
+          <div className="card-header">
+            🔮 Shio Terprediksi {mi.flag} {mi.short}
+            <span className="text-xs text-slate-500 ml-auto">{data.totalDraws} draw</span>
+          </div>
 
           {data.currentShio && (
             <div className="flex items-center gap-4 p-3 bg-slate-800 rounded-lg mb-4">
@@ -69,13 +76,8 @@ export default function Shio() {
                   <div className="text-sm font-medium text-slate-300 w-16 shrink-0">{s.name}</div>
                   <div className="flex-1">
                     <div className="bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${(s.score / maxScore) * 100}%`,
-                          background: isActive ? '#f59e0b' : '#3b82f6',
-                        }}
-                      />
+                      <div className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${(s.score / maxScore) * 100}%`, background: isActive ? '#f59e0b' : '#3b82f6' }} />
                     </div>
                   </div>
                   <div className={`text-xs font-bold w-8 text-right shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-500'}`}>{s.pct}%</div>
@@ -94,11 +96,8 @@ export default function Shio() {
         </div>
         <div className="flex flex-wrap gap-2 mt-2">
           {pool2D.map(p => (
-            <div
-              key={p.num}
-              title={`${p.shio.emoji} ${p.shio.name}`}
-              className="flex flex-col items-center gap-0.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 min-w-[52px] hover:border-amber-500 transition-colors cursor-default"
-            >
+            <div key={p.num} title={`${p.shio.emoji} ${p.shio.name}`}
+              className="flex flex-col items-center gap-0.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 min-w-[52px] hover:border-amber-500 transition-colors cursor-default">
               <div className="font-black text-white text-lg leading-none">{p.num}</div>
               <div className="text-base leading-none">{p.shio.emoji}</div>
             </div>

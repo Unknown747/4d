@@ -14,6 +14,7 @@ export async function fetchApi<T>(path: string, opts: RequestInit = {}): Promise
 
 export interface Row {
   id: number;
+  market: string;
   draw_date: string;
   result_4d: string;
   result_3d: string;
@@ -119,6 +120,7 @@ export interface AccuracyData {
 export interface ResultsData {
   total: number;
   data: Row[];
+  market: string;
 }
 
 export interface BBCampuranData {
@@ -136,4 +138,14 @@ export interface BBCampuranData {
     reason: string;
   }[];
   totalDrawsAnalyzed: number;
+}
+
+export interface SyncStatusData {
+  lastSync: {
+    sgp?: { market: string; fetched_at: string; added: number; skipped: number; status: string; message: string | null } | null;
+    sdy?: { market: string; fetched_at: string; added: number; skipped: number; status: string; message: string | null } | null;
+  };
+  sgp: { total: number; lastDate: string | null };
+  sdy: { total: number; lastDate: string | null };
+  missingDates: { sgp: number; sdy: number };
 }
