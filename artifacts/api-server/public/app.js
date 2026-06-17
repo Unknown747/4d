@@ -7,6 +7,15 @@ let statsCache = null;
 
 // ─── Utility ───────────────────────────────────────────────────────────────
 
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -23,7 +32,12 @@ function toast(msg, type = 'success') {
   const c = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span><span>${msg}</span>`;
+  const icon = document.createElement('span');
+  icon.textContent = type === 'success' ? '✅' : '❌';
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(icon);
+  el.appendChild(text);
   c.appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
@@ -56,7 +70,7 @@ function ballColor(n) {
 
 function renderBall(n, size = '', extra = false) {
   const cls = extra ? 'ball-gold' : ballColor(n);
-  return `<div class="ball ${size} ${cls}">${n}</div>`;
+  return `<div class="ball ${size} ${cls}">${Number(n)}</div>`;
 }
 
 function renderBalls(nums, extra, container, size = '') {
@@ -110,7 +124,7 @@ function renderDashboard(data) {
   overdueEl.innerHTML = data.overdue.map(o =>
     `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
       ${renderBall(o.number, '')}
-      <span class="text-xs text-muted">${o.lastDrawsAgo}x lalu</span>
+      <span class="text-xs text-muted">${Number(o.lastDrawsAgo)}x lalu</span>
     </div>`
   ).join('');
 }
@@ -120,11 +134,11 @@ function renderFreqBars(elId, items, color, total) {
   const el = document.getElementById(elId);
   el.innerHTML = items.map(item => `
     <div class="chart-bar-row">
-      <div class="chart-bar-label">${item.number}</div>
+      <div class="chart-bar-label">${Number(item.number)}</div>
       <div class="chart-bar-outer">
         <div class="chart-bar-inner" style="width:${(item.frequency/max*100).toFixed(1)}%; background:${color};"></div>
       </div>
-      <div class="chart-bar-val">${item.frequency}x</div>
+      <div class="chart-bar-val">${Number(item.frequency)}x</div>
     </div>
   `).join('');
 }
@@ -138,7 +152,11 @@ async function refreshQuickPredict() {
     const data = await api('/predict?mode=balanced');
     renderBalls(data.predictions, data.extra, el, '');
   } catch (e) {
-    el.innerHTML = `<span class="text-muted text-sm">${e.message}</span>`;
+    const span = document.createElement('span');
+    span.className = 'text-muted text-sm';
+    span.textContent = e.message;
+    el.innerHTML = '';
+    el.appendChild(span);
   }
 }
 
@@ -173,7 +191,11 @@ async function loadPrediction() {
     renderExplanations(data.explanations);
     renderHistChart();
   } catch (e) {
-    ballsEl.innerHTML = `<span class="text-muted text-sm">${e.message}</span>`;
+    const span = document.createElement('span');
+    span.className = 'text-muted text-sm';
+    span.textContent = e.message;
+    ballsEl.innerHTML = '';
+    ballsEl.appendChild(span);
     toast(e.message, 'error');
   }
 }
@@ -187,10 +209,10 @@ function renderExplanations(items) {
       <div class="explain-item ${cls}">
         ${renderBall(item.number, 'ball-sm')}
         <div class="explain-meta">
-          <div>Frekuensi: <strong>${item.frequency}x</strong> (${item.pct}%) &nbsp;·&nbsp; Terakhir: <strong>${item.lastDrawsAgo}x draw lalu</strong></div>
-          <div>Skor bobot: <strong>${item.score}</strong></div>
+          <div>Frekuensi: <strong>${Number(item.frequency)}x</strong> (${Number(item.pct)}%) &nbsp;·&nbsp; Terakhir: <strong>${Number(item.lastDrawsAgo)}x draw lalu</strong></div>
+          <div>Skor bobot: <strong>${Number(item.score)}</strong></div>
         </div>
-        <span class="explain-reason">${item.reason}</span>
+        <span class="explain-reason">${escapeHtml(item.reason)}</span>
       </div>
     `;
   }).join('');
@@ -203,11 +225,11 @@ async function renderHistChart() {
     const maxSum = Math.max(...data.data.map(d => d.sum), 1);
     el.innerHTML = data.data.slice(-10).map(d => `
       <div class="chart-bar-row" style="margin-bottom:4px;">
-        <div style="font-size:10px;color:var(--text-muted);width:60px;flex-shrink:0;">${d.date?.slice(5) ?? ''}</div>
+        <div style="font-size:10px;color:var(--text-muted);width:60px;flex-shrink:0;">${escapeHtml(d.date?.slice(5) ?? '')}</div>
         <div class="chart-bar-outer">
           <div class="chart-bar-inner" style="width:${(d.sum/maxSum*100).toFixed(1)}%; background:linear-gradient(90deg,#3b82f6,#8b5cf6);"></div>
         </div>
-        <div style="font-size:10px;color:var(--text-muted);width:30px;text-align:right;">Σ${d.sum}</div>
+        <div style="font-size:10px;color:var(--text-muted);width:30px;text-align:right;">Σ${Number(d.sum)}</div>
       </div>
     `).join('');
   } catch (_) {}
@@ -233,9 +255,9 @@ function renderHeatmap(data) {
     const ratio = n.frequency / maxFreq;
     const heat = ratio >= 0.8 ? 5 : ratio >= 0.6 ? 4 : ratio >= 0.4 ? 3 : ratio >= 0.2 ? 2 : ratio > 0.05 ? 1 : 0;
     return `
-      <div class="num-cell heat-${heat}" data-num="${n.number}" title="Angka ${n.number}: ${n.frequency}x (${n.pct}%), ${n.lastDrawsAgo} draw lalu">
-        <div class="num">${n.number}</div>
-        <div class="freq">${n.frequency}x</div>
+      <div class="num-cell heat-${heat}" data-num="${Number(n.number)}" title="Angka ${Number(n.number)}: ${Number(n.frequency)}x (${Number(n.pct)}%), ${Number(n.lastDrawsAgo)} draw lalu">
+        <div class="num">${Number(n.number)}</div>
+        <div class="freq">${Number(n.frequency)}x</div>
       </div>
     `;
   }).join('');
@@ -244,11 +266,11 @@ function renderHeatmap(data) {
   const maxF = Math.max(...data.numbers.map(n => n.frequency), 1);
   freqDist.innerHTML = data.numbers.map(n => `
     <div class="chart-bar-row">
-      <div class="chart-bar-label">${n.number}</div>
+      <div class="chart-bar-label">${Number(n.number)}</div>
       <div class="chart-bar-outer">
         <div class="chart-bar-inner" style="width:${(n.frequency/maxF*100).toFixed(1)}%;background:${n.isHot?'#ef4444':n.isCold?'#3b82f6':'#10b981'};"></div>
       </div>
-      <div class="chart-bar-val">${n.frequency}x</div>
+      <div class="chart-bar-val">${Number(n.frequency)}x</div>
     </div>
   `).join('');
 
@@ -256,11 +278,11 @@ function renderHeatmap(data) {
   const sorted = [...data.numbers].sort((a, b) => b.frequency - a.frequency);
   tbl.innerHTML = sorted.map(n => `
     <tr>
-      <td><strong>${n.number}</strong></td>
-      <td>${n.frequency}</td>
-      <td>${n.pct}%</td>
+      <td><strong>${Number(n.number)}</strong></td>
+      <td>${Number(n.frequency)}</td>
+      <td>${Number(n.pct)}%</td>
       <td>${n.isHot ? '<span class="tag tag-hot">Hot</span>' : n.isCold ? '<span class="tag tag-cold">Cold</span>' : '—'}</td>
-      <td class="${n.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${n.lastDrawsAgo} draw lalu</td>
+      <td class="${n.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${Number(n.lastDrawsAgo)} draw lalu</td>
     </tr>
   `).join('');
 }
@@ -283,17 +305,23 @@ async function loadHistory() {
       return `
         <tr>
           <td class="text-muted">${data.total - (historyPage * PAGE_SIZE + i)}</td>
-          <td>${r.period ?? '—'}</td>
-          <td>${r.draw_date}</td>
+          <td>${escapeHtml(r.period ?? '—')}</td>
+          <td>${escapeHtml(r.draw_date)}</td>
           <td><div class="balls-row">${nums.map(n => renderBall(n, 'ball-sm')).join('')}</div></td>
           <td>${r.extra ? renderBall(r.extra, 'ball-sm', true) : '—'}</td>
-          <td><span class="tag ${r.source === 'manual' ? 'tag-overdue' : 'tag-cold'}">${r.source}</span></td>
-          <td>${r.source === 'manual' ? `<button class="btn btn-danger" onclick="deleteResult(${r.id}, this)">🗑</button>` : ''}</td>
+          <td><span class="tag ${r.source === 'manual' ? 'tag-overdue' : 'tag-cold'}">${r.source === 'manual' ? 'manual' : 'seed'}</span></td>
+          <td>${r.source === 'manual' ? `<button class="btn btn-danger" onclick="deleteResult(${Number(r.id)}, this)">🗑</button>` : ''}</td>
         </tr>
       `;
     }).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted" style="text-align:center;">${e.message}</td></tr>`;
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.className = 'text-muted';
+    td.style.textAlign = 'center';
+    td.textContent = e.message;
+    tbody.innerHTML = '';
+    tbody.appendChild(document.createElement('tr')).appendChild(td);
     toast(e.message, 'error');
   }
 }
@@ -367,7 +395,7 @@ async function loadSyncStatus() {
     totalAuto.textContent = data.totalAutoRecords ?? 0;
 
     if (data.last?.status === 'ok') {
-      lastStatus.innerHTML = `<span class="text-green">✓ Berhasil</span> (+${data.last.added ?? 0} baru)`;
+      lastStatus.innerHTML = `<span class="text-green">✓ Berhasil</span> (+${Number(data.last.added ?? 0)} baru)`;
     } else if (data.last?.status === 'error') {
       lastStatus.innerHTML = `<span class="text-red">✗ Error</span>`;
     } else if (data.last?.status === 'empty') {

@@ -8,6 +8,15 @@ let currentPredictMode = 'hot';
 
 // ─── Utility ───────────────────────────────────────────────────
 
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -24,7 +33,12 @@ function toast(msg, type = 'success') {
   const c = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span><span>${msg}</span>`;
+  const icon = document.createElement('span');
+  icon.textContent = type === 'success' ? '✅' : '❌';
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(icon);
+  el.appendChild(text);
   c.appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
@@ -104,37 +118,38 @@ function renderDashboard(data) {
     document.getElementById('hero-date').textContent = formatDate(r.draw_date);
     document.getElementById('hero-4d').innerHTML = s.split('').map((d, i) =>
       `<div class="digit-box ${posColors[i]}">
-        ${d}
+        ${escapeHtml(d)}
         <span class="pos-label-sm">${posNames[i]}</span>
       </div>`
     ).join('');
 
+    const s3d = get3d(s), s2d = get2d(s), sas = getAs(s);
     document.getElementById('hero-derived').innerHTML = `
-      <div class="derived-chip d4d">4D: <strong>${s}</strong></div>
-      <div class="derived-chip d3d">3D: <strong>${get3d(s)}</strong></div>
-      <div class="derived-chip d2d">2D: <strong>${get2d(s)}</strong></div>
-      <div class="derived-chip das">AS: <strong>${getAs(s)}</strong></div>
+      <div class="derived-chip d4d">4D: <strong>${escapeHtml(s)}</strong></div>
+      <div class="derived-chip d3d">3D: <strong>${escapeHtml(s3d)}</strong></div>
+      <div class="derived-chip d2d">2D: <strong>${escapeHtml(s2d)}</strong></div>
+      <div class="derived-chip das">AS: <strong>${escapeHtml(sas)}</strong></div>
     `;
 
     document.getElementById('hero-detail').innerHTML = `
       <div class="detail-item">
         <div class="detail-label">KEPALA</div>
-        <div class="detail-value text-accent">${getKep(s)}</div>
+        <div class="detail-value text-accent">${escapeHtml(getKep(s))}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">EKOR</div>
-        <div class="detail-value text-green">${getEkr(s)}</div>
+        <div class="detail-value text-green">${escapeHtml(getEkr(s))}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">KOP</div>
-        <div class="detail-value text-blue">${getKop(s)}</div>
+        <div class="detail-value text-blue">${escapeHtml(getKop(s))}</div>
       </div>
     `;
 
     // Stat cards
     document.getElementById('stat-total').textContent = data.totalDraws;
-    document.getElementById('stat-2d-last').textContent = get2d(s);
-    document.getElementById('stat-as-last').textContent = getAs(s);
+    document.getElementById('stat-2d-last').textContent = s2d;
+    document.getElementById('stat-as-last').textContent = sas;
   }
 
   // Hot ekor
@@ -160,8 +175,8 @@ function renderHot2D(items) {
   el.innerHTML = items.slice(0, 10).map((x, i) => {
     const cls = i === 0 ? 'hot' : i < 3 ? 'warm' : '';
     return `<div class="chip ${cls}">
-      <span class="cn">${x.number}</span>
-      <span class="cs">${x.lastDrawsAgo === 0 ? 'Terbaru' : x.lastDrawsAgo + 'd lalu'}</span>
+      <span class="cn">${escapeHtml(x.number)}</span>
+      <span class="cs">${x.lastDrawsAgo === 0 ? 'Terbaru' : Number(x.lastDrawsAgo) + 'd lalu'}</span>
     </div>`;
   }).join('');
 }
@@ -171,8 +186,8 @@ function renderOverdue2D(items) {
   if (!el || !items) return;
   el.innerHTML = items.slice(0, 10).map(x =>
     `<div class="chip overdue">
-      <span class="cn">${x.number}</span>
-      <span class="cs">${x.lastDrawsAgo} draw lalu</span>
+      <span class="cn">${escapeHtml(x.number)}</span>
+      <span class="cs">${Number(x.lastDrawsAgo)} draw lalu</span>
     </div>`
   ).join('');
 }
@@ -180,15 +195,18 @@ function renderOverdue2D(items) {
 function renderRecentResults(items) {
   const el = document.getElementById('recent-results-list');
   if (!el || !items) return;
-  el.innerHTML = items.slice(0, 5).map(r => `
+  el.innerHTML = items.slice(0, 5).map(r => {
+    const s = fmt4d(r.result_4d);
+    return `
     <div class="recent-item">
-      <span class="recent-date">${r.draw_date?.slice(5) ?? '—'}</span>
+      <span class="recent-date">${escapeHtml(r.draw_date?.slice(5) ?? '—')}</span>
       <div class="recent-nums">
-        <span class="result-badge rb-4d">${fmt4d(r.result_4d)}</span>
-        <span class="result-badge rb-2d">${r.result_2d}</span>
+        <span class="result-badge rb-4d">${escapeHtml(s)}</span>
+        <span class="result-badge rb-2d">${escapeHtml(r.result_2d)}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function formatDate(s) {
@@ -206,12 +224,17 @@ async function refreshQuickPredict() {
     const data = await api('/predict?type=2d&mode=hot');
     el.innerHTML = data.predictions.slice(0, 6).map((p, i) =>
       `<div class="predict-chip-2d rank-${i + 1}">
-        <span class="num">${p.number}</span>
-        <span class="rsn">${p.reason.replace(/[🔥⚡📊🧊📈]/g, '').trim()}</span>
+        <span class="num">${escapeHtml(p.number)}</span>
+        <span class="rsn">${escapeHtml(p.reason.replace(/[🔥⚡📊🧊📈]/g, '').trim())}</span>
       </div>`
     ).join('');
   } catch (e) {
-    el.innerHTML = `<span class="text-muted" style="font-size:12px;">${e.message}</span>`;
+    const span = document.createElement('span');
+    span.className = 'text-muted';
+    span.style.fontSize = '12px';
+    span.textContent = e.message;
+    el.innerHTML = '';
+    el.appendChild(span);
   }
 }
 
@@ -248,24 +271,28 @@ async function loadPredictions() {
 
     const maxScore = Math.max(...data.predictions.map(p => p.score), 1);
     el.innerHTML = data.predictions.map((p, i) => {
-      const numClass = currentPredictType === '4d' ? '' : currentPredictType === '3d' ? 'sm' : 'sm';
+      const numClass = currentPredictType === '4d' ? '' : 'sm';
       const pct = Math.round((p.score / maxScore) * 100);
       return `
         <div class="predict-item rank-${i + 1}">
           <div class="predict-rank">#${i + 1}</div>
-          <div class="predict-num ${numClass} mono">${p.number}</div>
+          <div class="predict-num ${numClass} mono">${escapeHtml(p.number)}</div>
           <div class="predict-info">
-            <div class="predict-reason">${p.reason}</div>
+            <div class="predict-reason">${escapeHtml(p.reason)}</div>
             <div class="predict-score-bar">
               <div class="predict-score-fill" style="width:${pct}%"></div>
             </div>
           </div>
-          <div class="predict-score-label">${p.score}</div>
+          <div class="predict-score-label">${Number(p.score)}</div>
         </div>
       `;
     }).join('');
   } catch (e) {
-    el.innerHTML = `<div style="padding:1rem;color:var(--text-muted);font-size:13px;">❌ ${e.message}</div>`;
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;';
+    div.textContent = '❌ ' + e.message;
+    el.innerHTML = '';
+    el.appendChild(div);
   }
 }
 
@@ -292,9 +319,9 @@ function renderPosHeatmap(posStats) {
         const ratio = d.count / maxCount;
         const heat = ratio >= 0.5 ? 5 : ratio >= 0.35 ? 4 : ratio >= 0.22 ? 3 : ratio >= 0.12 ? 2 : ratio > 0.03 ? 1 : 0;
         const isTop = d.digit === topDigit ? 'is-top' : '';
-        return `<div class="pos-cell heat-${heat} ${isTop}" title="Digit ${d.digit}: ${d.count}x (${d.pct}%), ${d.lastDrawsAgo} draw lalu">
-          <span class="dc">${d.digit}</span>
-          <span class="dv">${d.count}x</span>
+        return `<div class="pos-cell heat-${heat} ${isTop}" title="Digit ${Number(d.digit)}: ${Number(d.count)}x (${Number(d.pct)}%), ${Number(d.lastDrawsAgo)} draw lalu">
+          <span class="dc">${Number(d.digit)}</span>
+          <span class="dv">${Number(d.count)}x</span>
         </div>`;
       }).join('')}
     </div>`;
@@ -309,11 +336,11 @@ function renderDigitChart(elId, stats) {
     const pct = (d.count / maxCount * 100).toFixed(0);
     const color = d.lastDrawsAgo < 3 ? '#ef4444' : d.lastDrawsAgo < 8 ? '#f59e0b' : '#3b82f6';
     return `<div class="dfc-row">
-      <div class="dfc-label">${d.digit}</div>
+      <div class="dfc-label">${Number(d.digit)}</div>
       <div class="dfc-bar">
         <div class="dfc-fill" style="width:${pct}%;background:${color};"></div>
       </div>
-      <div class="dfc-val">${d.count}x</div>
+      <div class="dfc-val">${Number(d.count)}x</div>
     </div>`;
   }).join('');
 }
@@ -328,9 +355,9 @@ function render2DTable(items) {
       ? '<span class="tag tag-overdue">Overdue</span>'
       : '—';
     return `<tr>
-      <td class="mono" style="font-weight:700;font-size:16px;">${x.number}</td>
-      <td>${x.count}x</td>
-      <td class="${x.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${x.lastDrawsAgo === 0 ? 'Terbaru' : x.lastDrawsAgo + ' draw lalu'}</td>
+      <td class="mono" style="font-weight:700;font-size:16px;">${escapeHtml(x.number)}</td>
+      <td>${Number(x.count)}x</td>
+      <td class="${x.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${x.lastDrawsAgo === 0 ? 'Terbaru' : Number(x.lastDrawsAgo) + ' draw lalu'}</td>
       <td>${status}</td>
     </tr>`;
   }).join('');
@@ -341,8 +368,8 @@ function render3DChips(items) {
   if (!el || !items) return;
   el.innerHTML = items.slice(0, 15).map(x =>
     `<div class="chip-lg">
-      ${x.number}
-      <span class="cnt">${x.count}x · ${x.lastDrawsAgo}d lalu</span>
+      ${escapeHtml(x.number)}
+      <span class="cnt">${Number(x.count)}x · ${Number(x.lastDrawsAgo)}d lalu</span>
     </div>`
   ).join('');
 }
@@ -379,17 +406,17 @@ async function loadHistory() {
           ? '<span class="tag tag-manual">manual</span>'
           : '<span class="tag tag-seed">seed</span>';
         const del = r.source === 'manual'
-          ? `<button class="btn btn-danger" onclick="deleteResult(${r.id})">🗑</button>`
+          ? `<button class="btn btn-danger" onclick="deleteResult(${Number(r.id)})">🗑</button>`
           : '';
         return `<tr>
           <td class="text-muted">${data.total - (historyPage * PAGE_SIZE + i)}</td>
-          <td>${r.draw_date}</td>
-          <td class="mono" style="font-weight:700;font-size:15px;color:var(--accent)">${s}</td>
-          <td class="mono text-green">${get3d(s)}</td>
-          <td class="mono text-blue">${get2d(s)}</td>
-          <td class="mono">${getAs(s)}</td>
-          <td class="mono">${getKep(s)}</td>
-          <td class="mono">${getEkr(s)}</td>
+          <td>${escapeHtml(r.draw_date)}</td>
+          <td class="mono" style="font-weight:700;font-size:15px;color:var(--accent)">${escapeHtml(s)}</td>
+          <td class="mono text-green">${escapeHtml(get3d(s))}</td>
+          <td class="mono text-blue">${escapeHtml(get2d(s))}</td>
+          <td class="mono">${escapeHtml(getAs(s))}</td>
+          <td class="mono">${escapeHtml(getKep(s))}</td>
+          <td class="mono">${escapeHtml(getEkr(s))}</td>
           <td>${srcTag}</td>
           <td>${del}</td>
         </tr>`;
@@ -401,18 +428,18 @@ async function loadHistory() {
       mobileList.innerHTML = data.data.map(r => {
         const s = fmt4d(r.result_4d);
         const del = r.source === 'manual'
-          ? `<button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="deleteResult(${r.id})">🗑</button>`
+          ? `<button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="deleteResult(${Number(r.id)})">🗑</button>`
           : '';
         return `<div class="history-card">
           <div>
-            <div class="hc-date">${r.draw_date}</div>
+            <div class="hc-date">${escapeHtml(r.draw_date)}</div>
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${r.source === 'manual' ? '✏️ manual' : '📦 seed'}</div>
           </div>
           <div class="hc-nums">
-            <div class="hc-4d">${s}</div>
+            <div class="hc-4d">${escapeHtml(s)}</div>
             <div class="hc-derived">
-              <span class="result-badge rb-3d">${get3d(s)}</span>
-              <span class="result-badge rb-2d">${get2d(s)}</span>
+              <span class="result-badge rb-3d">${escapeHtml(get3d(s))}</span>
+              <span class="result-badge rb-2d">${escapeHtml(get2d(s))}</span>
             </div>
           </div>
           <div class="hc-del">${del}</div>
@@ -420,10 +447,25 @@ async function loadHistory() {
       }).join('');
     }
   } catch (e) {
-    const msg = `<div style="text-align:center;padding:1rem;color:var(--text-muted);">${e.message}</div>`;
-    if (mobileList) mobileList.innerHTML = msg;
-    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">${e.message}</td></tr>`;
-    toast(e.message, 'error');
+    const msg = e.message;
+    if (mobileList) {
+      const div = document.createElement('div');
+      div.style.cssText = 'text-align:center;padding:1rem;color:var(--text-muted);';
+      div.textContent = msg;
+      mobileList.innerHTML = '';
+      mobileList.appendChild(div);
+    }
+    if (tbody) {
+      const td = document.createElement('td');
+      td.colSpan = 10;
+      td.style.cssText = 'text-align:center;color:var(--text-muted);';
+      td.textContent = msg;
+      const tr = document.createElement('tr');
+      tr.appendChild(td);
+      tbody.innerHTML = '';
+      tbody.appendChild(tr);
+    }
+    toast(msg, 'error');
   }
 }
 
