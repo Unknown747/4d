@@ -23,12 +23,35 @@
     <button class="nav-tab" onclick="showPage('history')">History</button>
     <button class="nav-tab" onclick="showPage('input')">Input Result</button>
   </div>
+  <button class="sync-nav-btn" id="sync-nav-btn" onclick="runSync()" title="Sync data dari HKJC">
+    <span id="sync-nav-icon">🔄</span>
+    <span id="sync-nav-label">Sync</span>
+  </button>
 </nav>
 
 <div class="container">
 
   <!-- ===== DASHBOARD ===== -->
   <div id="page-dashboard" class="page active">
+    <!-- Sync status bar -->
+    <div class="sync-card section-gap" id="sync-card">
+      <div class="sync-status-row">
+        <div class="sync-dot empty" id="sync-dot"></div>
+        <div class="sync-info">
+          Auto-sync: <strong>setiap 6 jam</strong>
+          &nbsp;·&nbsp; Terakhir: <strong id="sync-last-time">memuat...</strong>
+          &nbsp;·&nbsp; Data auto: <strong id="sync-total-auto">—</strong> draw
+          &nbsp;·&nbsp; Status: <strong id="sync-last-status">—</strong>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="sync-result-toast" id="sync-result-toast"></div>
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;" onclick="runSync()" id="sync-manual-btn">
+          🔄 Sync Sekarang
+        </button>
+      </div>
+    </div>
+
     <div class="section-gap">
       <div class="grid-4">
         <div class="stat-card">

@@ -3,11 +3,21 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import pinoHttp from "pino-http";
+import cron from "node-cron";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { initDb } from "./db/sqlite.js";
+import { syncResults, initSyncLog } from "./lib/fetcher.js";
 
 initDb();
+initSyncLog();
+
+// Auto-sync every 6 hours
+cron.schedule("0 */6 * * *", async () => {
+  logger.info("Cron: starting scheduled HK sync");
+  const result = await syncResults();
+  logger.info({ added: result.added, skipped: result.skipped }, "Cron: sync done");
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

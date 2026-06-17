@@ -345,11 +345,90 @@ async function submitResult(e) {
   }
 }
 
+// ─── Sync ─────────────────────────────────────────────────────────────────────
+
+async function loadSyncStatus() {
+  try {
+    const data = await api('/sync/status');
+    const dot = document.getElementById('sync-dot');
+    const lastTime = document.getElementById('sync-last-time');
+    const totalAuto = document.getElementById('sync-total-auto');
+    const lastStatus = document.getElementById('sync-last-status');
+
+    dot.className = 'sync-dot ' + (data.last?.status ?? 'empty');
+
+    if (data.last?.fetched_at) {
+      const d = new Date(data.last.fetched_at + 'Z');
+      lastTime.textContent = d.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+    } else {
+      lastTime.textContent = 'Belum pernah';
+    }
+
+    totalAuto.textContent = data.totalAutoRecords ?? 0;
+
+    if (data.last?.status === 'ok') {
+      lastStatus.innerHTML = `<span class="text-green">✓ Berhasil</span> (+${data.last.added ?? 0} baru)`;
+    } else if (data.last?.status === 'error') {
+      lastStatus.innerHTML = `<span class="text-red">✗ Error</span>`;
+    } else if (data.last?.status === 'empty') {
+      lastStatus.innerHTML = `<span class="text-muted">Tidak ada data baru</span>`;
+    } else {
+      lastStatus.textContent = '—';
+    }
+  } catch (e) {
+    console.warn('Sync status error:', e.message);
+  }
+}
+
+async function runSync() {
+  const btn = document.getElementById('sync-manual-btn');
+  const navBtn = document.getElementById('sync-nav-btn');
+  const navIcon = document.getElementById('sync-nav-icon');
+  const resultToast = document.getElementById('sync-result-toast');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Sedang sync...';
+  navBtn.classList.add('syncing');
+  navIcon.style.display = 'inline-block';
+  resultToast.className = 'sync-result-toast';
+
+  try {
+    const data = await api('/sync/run', { method: 'POST' });
+
+    let msg = '';
+    if (data.added > 0) {
+      msg = `✅ +${data.added} draw baru ditambahkan!`;
+      toast(`${data.added} draw baru berhasil disimpan! 🎉`);
+      statsCache = null;
+      loadStats();
+      refreshQuickPredict();
+    } else if (data.errors?.length > 0) {
+      msg = `⚠️ Sync error: ${data.errors[0]}`;
+      toast('Sync gagal: sumber data tidak tersedia', 'error');
+    } else {
+      msg = `ℹ️ Tidak ada data baru (${data.skipped} sudah ada)`;
+      toast('Data sudah up-to-date, tidak ada draw baru');
+    }
+
+    resultToast.textContent = msg;
+    resultToast.className = 'sync-result-toast visible';
+    await loadSyncStatus();
+
+    setTimeout(() => { resultToast.className = 'sync-result-toast'; }, 6000);
+  } catch (e) {
+    toast('Sync gagal: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Sync Sekarang';
+    navBtn.classList.remove('syncing');
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 
 (async function init() {
-  await loadStats();
+  await Promise.all([loadStats(), loadSyncStatus()]);
   refreshQuickPredict();
 })();
