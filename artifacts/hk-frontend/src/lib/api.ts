@@ -87,6 +87,27 @@ export interface RekomendasiData {
   confidence: number;
 }
 
+export interface WinrateData {
+  totalChecked: number;
+  winrate: {
+    '4d': { hits: number; total: number; pct: number };
+    '3d': { hits: number; total: number; pct: number };
+    '2d': { hits: number; total: number; pct: number };
+  };
+  history: {
+    based_on_date: string;
+    angka_kuat: number[];
+    top3_4d: string[];
+    actual_4d: string | null;
+    actual_3d: string | null;
+    actual_2d: string | null;
+    hit_4d: boolean;
+    hit_3d: boolean;
+    hit_2d: boolean;
+    checked: boolean;
+  }[];
+}
+
 export interface AccuracyData {
   enough: boolean;
   message?: string;

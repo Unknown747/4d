@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchApi, type StatsData, type Row, type RekomendasiData } from '../lib/api';
+import { fetchApi, type StatsData, type Row, type RekomendasiData, type WinrateData } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 function todayStr() {
@@ -165,6 +165,115 @@ function RekomendasiHariIni() {
   );
 }
 
+// ── Win Rate Tracker ─────────────────────────────────────────────────────────
+function WinRateTracker() {
+  const { data, isLoading } = useQuery<WinrateData>({
+    queryKey: ['winrate'],
+    queryFn: () => fetchApi<WinrateData>('/rekomendasi/winrate'),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) return (
+    <div className="card border-slate-700/40">
+      <div className="card-header">📈 Win Rate Rekomendasi</div>
+      <div className="flex justify-center py-4"><div className="spinner" /></div>
+    </div>
+  );
+
+  if (!data) return null;
+
+  const { winrate, history, totalChecked } = data;
+
+  const WRBar = ({ label, wr, color }: { label: string; wr: { hits: number; total: number; pct: number }; color: string }) => (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between items-baseline">
+        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">{label}</span>
+        <span className="font-black text-lg" style={{ color }}>
+          {wr.total > 0 ? `${wr.pct}%` : '—'}
+        </span>
+      </div>
+      <div className="bg-slate-700/60 rounded-full h-2.5">
+        <div
+          className="h-full rounded-full transition-all duration-700"
+          style={{ width: wr.total > 0 ? `${wr.pct}%` : '0%', background: color }}
+        />
+      </div>
+      <div className="text-xs text-slate-500">{wr.hits}/{wr.total} tembus</div>
+    </div>
+  );
+
+  const checked = history.filter(h => h.checked);
+
+  return (
+    <div className="card border-slate-700/40">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="font-bold text-slate-200">📈 Win Rate Rekomendasi</div>
+          <div className="text-xs text-slate-500 mt-0.5">{totalChecked} draw sudah diverifikasi · otomatis saat input result baru</div>
+        </div>
+      </div>
+
+      {totalChecked === 0 ? (
+        <div className="text-center py-6 text-slate-500 text-sm">
+          Belum ada data yang diverifikasi.<br />
+          <span className="text-xs">Input result baru untuk mulai melacak win rate.</span>
+        </div>
+      ) : (
+        <>
+          {/* Win Rate Bars */}
+          <div className="grid grid-cols-3 gap-4 mb-5">
+            <WRBar label="4D" wr={winrate['4d']} color="#f59e0b" />
+            <WRBar label="3D" wr={winrate['3d']} color="#3b82f6" />
+            <WRBar label="2D" wr={winrate['2d']} color="#10b981" />
+          </div>
+
+          {/* History table */}
+          {checked.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-slate-700/40">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-800/50 border-b border-slate-700/50 text-slate-500 uppercase">
+                    <th className="text-left py-2 px-3">Tanggal</th>
+                    <th className="text-left py-2 px-3">Top Prediksi</th>
+                    <th className="text-left py-2 px-3">Hasil Aktual</th>
+                    <th className="text-center py-2 px-2">4D</th>
+                    <th className="text-center py-2 px-2">3D</th>
+                    <th className="text-center py-2 px-2">2D</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checked.slice(0, 10).map((h, i) => (
+                    <tr key={i} className="border-b border-slate-800/40 hover:bg-white/2">
+                      <td className="py-2 px-3 text-slate-400">{h.based_on_date}</td>
+                      <td className="py-2 px-3 font-mono text-slate-300">{h.top3_4d.join(', ')}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-white">{h.actual_4d}</td>
+                      <td className="text-center py-2 px-2">
+                        {h.hit_4d
+                          ? <span className="text-green-400 font-bold">✓</span>
+                          : <span className="text-slate-600">✗</span>}
+                      </td>
+                      <td className="text-center py-2 px-2">
+                        {h.hit_3d
+                          ? <span className="text-green-400 font-bold">✓</span>
+                          : <span className="text-slate-600">✗</span>}
+                      </td>
+                      <td className="text-center py-2 px-2">
+                        {h.hit_2d
+                          ? <span className="text-green-400 font-bold">✓</span>
+                          : <span className="text-slate-600">✗</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Quick Input ──────────────────────────────────────────────────────────────
 function QuickInput({ onSaved }: { onSaved: () => void }) {
   const { toast } = useToast();
@@ -277,6 +386,7 @@ export default function Dashboard() {
     qc.invalidateQueries({ queryKey: ['results'] });
     qc.invalidateQueries({ queryKey: ['predict'] });
     qc.invalidateQueries({ queryKey: ['rekomendasi'] });
+    qc.invalidateQueries({ queryKey: ['winrate'] });
   }
 
   const latest = data?.latestResult;
@@ -288,7 +398,10 @@ export default function Dashboard() {
       {/* ── 1. Rekomendasi Hari Ini (teratas) ── */}
       <RekomendasiHariIni />
 
-      {/* ── 2. Stats Row ── */}
+      {/* ── 2. Win Rate Tracker ── */}
+      <WinRateTracker />
+
+      {/* ── 3. Stats Row ── */}
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="card text-center">

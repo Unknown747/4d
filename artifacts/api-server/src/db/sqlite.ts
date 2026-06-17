@@ -50,6 +50,24 @@ export function initDb() {
       reason TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS rekomendasi_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      based_on_date TEXT NOT NULL,
+      angka_kuat TEXT NOT NULL,
+      predictions_json TEXT NOT NULL,
+      confidence INTEGER DEFAULT 0,
+      actual_4d TEXT,
+      actual_3d TEXT,
+      actual_2d TEXT,
+      hit_4d INTEGER DEFAULT 0,
+      hit_3d INTEGER DEFAULT 0,
+      hit_2d INTEGER DEFAULT 0,
+      checked_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rekom_based_on ON rekomendasi_history(based_on_date DESC);
   `);
 
   const count = (db.prepare("SELECT COUNT(*) as c FROM hk4d_results").get() as { c: number }).c;

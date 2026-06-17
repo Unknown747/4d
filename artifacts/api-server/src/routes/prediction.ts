@@ -797,9 +797,29 @@ router.get("/rekomendasi", (_req, res): void => {
   }
 
   const confidence = Math.min(90, Math.round(45 + (total / 60) * 45));
+  const basedOnDate = rows[0]!.draw_date;
+
+  // ── Simpan ke rekomendasi_history (upsert by based_on_date) ──
+  try {
+    const existing = db.prepare(
+      `SELECT id FROM rekomendasi_history WHERE based_on_date = ?`
+    ).get(basedOnDate) as { id: number } | undefined;
+
+    if (!existing) {
+      db.prepare(`
+        INSERT INTO rekomendasi_history (based_on_date, angka_kuat, predictions_json, confidence)
+        VALUES (?, ?, ?, ?)
+      `).run(
+        basedOnDate,
+        top5.join(","),
+        JSON.stringify(top10),
+        confidence
+      );
+    }
+  } catch { /* simpan gagal tidak harus stop response */ }
 
   res.json({
-    tanggal: rows[0]!.draw_date,
+    tanggal: basedOnDate,
     angkaKuat: top5,
     predictions: top10,
     signals: {
@@ -808,6 +828,63 @@ router.get("/rekomendasi", (_req, res): void => {
       totalDraws: total,
     },
     confidence,
+  });
+});
+
+// ─── /api/rekomendasi/winrate ───────────────────────────────────────────────
+
+router.get("/rekomendasi/winrate", (_req, res): void => {
+  interface RekRow {
+    id: number;
+    based_on_date: string;
+    angka_kuat: string;
+    predictions_json: string;
+    confidence: number;
+    actual_4d: string | null;
+    actual_3d: string | null;
+    actual_2d: string | null;
+    hit_4d: number;
+    hit_3d: number;
+    hit_2d: number;
+    checked_at: string | null;
+    created_at: string;
+  }
+
+  const rows = db.prepare(
+    `SELECT * FROM rekomendasi_history ORDER BY based_on_date DESC LIMIT 30`
+  ).all() as RekRow[];
+
+  const checked = rows.filter(r => r.actual_4d !== null);
+  const total = checked.length;
+  const hit4d = checked.filter(r => r.hit_4d).length;
+  const hit3d = checked.filter(r => r.hit_3d).length;
+  const hit2d = checked.filter(r => r.hit_2d).length;
+
+  const history = rows.map(r => {
+    let preds: { num4d: string; num3d: string; num2d: string }[] = [];
+    try { preds = JSON.parse(r.predictions_json); } catch { preds = []; }
+    return {
+      based_on_date: r.based_on_date,
+      angka_kuat: r.angka_kuat.split(",").map(Number),
+      top3_4d: preds.slice(0, 3).map(p => p.num4d),
+      actual_4d: r.actual_4d,
+      actual_3d: r.actual_3d,
+      actual_2d: r.actual_2d,
+      hit_4d: r.hit_4d === 1,
+      hit_3d: r.hit_3d === 1,
+      hit_2d: r.hit_2d === 1,
+      checked: r.actual_4d !== null,
+    };
+  });
+
+  res.json({
+    totalChecked: total,
+    winrate: {
+      "4d": { hits: hit4d, total, pct: total > 0 ? Math.round((hit4d/total)*100) : 0 },
+      "3d": { hits: hit3d, total, pct: total > 0 ? Math.round((hit3d/total)*100) : 0 },
+      "2d": { hits: hit2d, total, pct: total > 0 ? Math.round((hit2d/total)*100) : 0 },
+    },
+    history,
   });
 });
 

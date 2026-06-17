@@ -35,6 +35,38 @@ router.post("/results", (req, res): void => {
        VALUES (?, ?, ?, ?, 'manual')`
     ).run(draw_date, r, r3d, r2d);
     const row = db.prepare("SELECT * FROM hk4d_results WHERE id = ?").get(info.lastInsertRowid);
+
+    // ── Cek apakah ada rekomendasi yang dibuat sebelum tanggal ini (belum dicek) ──
+    try {
+      interface RekRow { id: number; predictions_json: string; }
+      const rek = db.prepare(`
+        SELECT id, predictions_json FROM rekomendasi_history
+        WHERE based_on_date < ? AND actual_4d IS NULL
+        ORDER BY based_on_date DESC LIMIT 1
+      `).get(draw_date) as RekRow | undefined;
+
+      if (rek) {
+        let preds: { num4d: string; num3d: string; num2d: string }[] = [];
+        try { preds = JSON.parse(rek.predictions_json); } catch { preds = []; }
+
+        const pred4Ds = new Set(preds.map(p => p.num4d));
+        const pred3Ds = new Set(preds.map(p => p.num3d));
+        const pred2Ds = new Set(preds.map(p => p.num2d));
+
+        const hit4d = pred4Ds.has(r) ? 1 : 0;
+        const hit3d = pred3Ds.has(r3d) ? 1 : 0;
+        const hit2d = pred2Ds.has(r2d) ? 1 : 0;
+
+        db.prepare(`
+          UPDATE rekomendasi_history
+          SET actual_4d = ?, actual_3d = ?, actual_2d = ?,
+              hit_4d = ?, hit_3d = ?, hit_2d = ?,
+              checked_at = datetime('now')
+          WHERE id = ?
+        `).run(r, r3d, r2d, hit4d, hit3d, hit2d, rek.id);
+      }
+    } catch { /* jangan gagalkan insert utama */ }
+
     res.status(201).json(row);
   } catch (err: any) {
     if (err?.code === "SQLITE_CONSTRAINT_UNIQUE") {
