@@ -17,6 +17,25 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+function copyNum(num, btn) {
+  navigator.clipboard.writeText(num).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
+  }).catch(() => toast('Gagal copy', 'error'));
+}
+
+function copyAll(nums, btn) {
+  const text = nums.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Tersalin!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => toast('Gagal copy', 'error'));
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -285,25 +304,50 @@ async function loadPredictions() {
     }
 
     const maxScore = Math.max(...data.predictions.map(p => p.score), 1);
+    const allNums = data.predictions.map(p => p.number);
+
+    // Copy All strip
+    const copyAllId = 'predict-copy-all-btn';
+    const copyAllHtml = `
+      <div class="copy-all-strip">
+        <span class="copy-all-label">📋 ${data.predictions.length} nomor siap</span>
+        <button class="btn-copy-all" id="${copyAllId}" onclick="copyAll(${JSON.stringify(allNums)}, this)">📋 Copy Semua</button>
+      </div>`;
+
     const items = data.predictions.map((p, i) => {
-      const numClass = currentPredictType === '4d' ? '' : 'sm';
+      const is4d = currentPredictType === '4d';
+      const numClass = is4d ? '' : 'sm';
       const pct = Math.round((p.score / maxScore) * 100);
+      // Derive 3D and 2D from 4D number
+      const derived3d = is4d ? p.number.slice(1) : '';
+      const derived2d = is4d ? p.number.slice(2) : '';
+      const derivedHtml = is4d ? `
+        <div class="predict-derived">
+          <span class="predict-badge p3d">3D: <strong>${escapeHtml(derived3d)}</strong></span>
+          <span class="predict-badge p2d">2D: <strong>${escapeHtml(derived2d)}</strong></span>
+        </div>` : '';
       return `
         <div class="predict-item rank-${i + 1}">
           <div class="predict-rank">#${i + 1}</div>
-          <div class="predict-num ${numClass} mono">${escapeHtml(p.number)}</div>
+          <div class="predict-num-col">
+            <div class="predict-num ${numClass} mono">${escapeHtml(p.number)}</div>
+            ${derivedHtml}
+          </div>
           <div class="predict-info">
             <div class="predict-reason">${escapeHtml(p.reason)}</div>
             <div class="predict-score-bar">
               <div class="predict-score-fill" style="width:${pct}%"></div>
             </div>
           </div>
-          <div class="predict-score-label">${Number(p.score)}</div>
+          <div class="predict-right">
+            <div class="predict-score-label">${Number(p.score)}</div>
+            <button class="btn-copy-num" onclick="copyNum('${escapeHtml(p.number)}', this)">⎘</button>
+          </div>
         </div>
       `;
     }).join('');
 
-    el.innerHTML = excludedHtml + items;
+    el.innerHTML = excludedHtml + copyAllHtml + items;
   } catch (e) {
     const div = document.createElement('div');
     div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;';
@@ -588,6 +632,13 @@ function renderBBResults(data) {
         </div>`;
     }
 
+    const allNums = data.predictions.map(p => p.number);
+    const copyAllHtml = `
+      <div class="copy-all-strip">
+        <span class="copy-all-label">📋 ${allNums.length} nomor siap</span>
+        <button class="btn-copy-all" onclick="copyAll(${JSON.stringify(allNums)}, this)">📋 Copy Semua</button>
+      </div>`;
+
     const items = data.predictions.map((p, i) =>
       `<div class="bb-result-item">
         <div class="bb-rank">#${i + 1}</div>
@@ -602,10 +653,11 @@ function renderBBResults(data) {
           <div class="bb-score-num">${p.score}</div>
           <div class="bb-reason">${escapeHtml(p.reason)}</div>
         </div>
+        <button class="btn-copy-num" onclick="copyNum('${escapeHtml(p.number)}', this)">⎘</button>
       </div>`
     ).join('');
 
-    resultList.innerHTML = excludedHtml + items;
+    resultList.innerHTML = excludedHtml + copyAllHtml + items;
   }
 }
 
