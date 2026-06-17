@@ -1,0 +1,1 @@
+- [HK Toto Pro Architecture](hk-toto-arch.md) — SQLite hk4d_results table (no Mark Six); derive 3D=slice(1), 2D=slice(2) from padded 4D string.

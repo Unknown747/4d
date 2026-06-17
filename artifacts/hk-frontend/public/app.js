@@ -1,11 +1,12 @@
 const BASE = '/api';
-let currentMode = 'balanced';
-let historyPage = 0;
-const PAGE_SIZE = 20;
-let historyTotal = 0;
 let statsCache = null;
+let historyPage = 0;
+const PAGE_SIZE = 15;
+let historyTotal = 0;
+let currentPredictType = '4d';
+let currentPredictMode = 'hot';
 
-// ─── Utility ───────────────────────────────────────────────────────────────
+// ─── Utility ───────────────────────────────────────────────────
 
 async function api(path, opts = {}) {
   const res = await fetch(BASE + path, {
@@ -28,45 +29,59 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3500);
 }
 
+function fmt4d(s) {
+  return String(s ?? '').padStart(4, '0');
+}
+
+function get3d(s) { return fmt4d(s).slice(1); }
+function get2d(s) { return fmt4d(s).slice(2); }
+function getAs(s) { return fmt4d(s).slice(0, 2); }
+function getKop(s) { return fmt4d(s).slice(1, 3); }
+function getKep(s) { return fmt4d(s)[2]; }
+function getEkr(s) { return fmt4d(s)[3]; }
+
+// ─── Navigation ────────────────────────────────────────────────
+
+const PAGE_TITLES = {
+  dashboard: 'Dashboard',
+  prediksi: '🎯 Prediksi',
+  analisis: '🔬 Analisis',
+  history: '📋 History',
+  input: '➕ Input',
+};
+
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
+  document.querySelectorAll('.bottom-tab').forEach(t => t.classList.remove('active'));
+
+  document.getElementById('page-' + id)?.classList.add('active');
+
+  // Activate desktop nav
   document.querySelectorAll('.nav-tab').forEach(t => {
-    if (t.textContent.toLowerCase().includes(id === 'dashboard' ? 'dash' :
-        id === 'prediction' ? 'pred' : id === 'heatmap' ? 'heat' :
-        id === 'history' ? 'hist' : 'input')) t.classList.add('active');
+    const txt = t.textContent.toLowerCase();
+    if (txt.includes(id.slice(0, 4))) t.classList.add('active');
   });
-  if (id === 'heatmap' && statsCache) renderHeatmap(statsCache);
-  if (id === 'history') loadHistory();
-  if (id === 'prediction') loadPrediction();
+
+  // Activate bottom nav
+  document.querySelectorAll('.bottom-tab').forEach(t => {
+    if (t.getAttribute('onclick')?.includes(id)) t.classList.add('active');
+  });
+
+  // Mobile header title
+  const titleEl = document.getElementById('mobile-page-title');
+  if (titleEl) titleEl.textContent = PAGE_TITLES[id] || id;
+
+  // Lazy load
+  if (id === 'analisis' && statsCache) renderAnalysis(statsCache);
+  if (id === 'analisis' && !statsCache) loadStats().then(() => renderAnalysis(statsCache));
+  if (id === 'history') { historyPage = 0; loadHistory(); }
+  if (id === 'prediksi') loadPredictions();
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ─── Ball rendering ─────────────────────────────────────────────────────────
-
-function ballColor(n) {
-  if (n <= 10) return 'ball-red';
-  if (n <= 20) return 'ball-blue';
-  if (n <= 30) return 'ball-green';
-  if (n <= 40) return 'ball-purple';
-  return 'ball-gold';
-}
-
-function renderBall(n, size = '', extra = false) {
-  const cls = extra ? 'ball-gold' : ballColor(n);
-  return `<div class="ball ${size} ${cls}">${n}</div>`;
-}
-
-function renderBalls(nums, extra, container, size = '') {
-  let html = nums.map(n => renderBall(n, size)).join('');
-  if (extra) {
-    html += `<div class="extra-separator"></div>`;
-    html += renderBall(extra, size, true);
-  }
-  container.innerHTML = html;
-}
-
-// ─── Stats loading ───────────────────────────────────────────────────────────
+// ─── Stats & Dashboard ─────────────────────────────────────────
 
 async function loadStats() {
   try {
@@ -74,223 +89,340 @@ async function loadStats() {
     statsCache = data;
     renderDashboard(data);
   } catch (e) {
-    toast('Gagal memuat statistik: ' + e.message, 'error');
+    toast('Gagal memuat data: ' + e.message, 'error');
   }
 }
 
 function renderDashboard(data) {
-  document.getElementById('stat-total').textContent = data.totalDraws;
+  // Hero latest result
+  const r = data.latestResult;
+  if (r) {
+    const s = fmt4d(r.result_4d);
+    const posColors = ['d0', 'd1', 'd2', 'd3'];
+    const posNames = ['AS', 'KOP', 'KEP', 'EKR'];
 
-  const hot = data.hot[0];
-  const cold = data.cold[0];
-  document.getElementById('stat-hotnum').textContent = hot?.number ?? '—';
-  document.getElementById('stat-hotfreq').textContent = hot ? `muncul ${hot.frequency}x (${hot.pct}%)` : '';
-  document.getElementById('stat-coldnum').textContent = cold?.number ?? '—';
-  document.getElementById('stat-coldfreq').textContent = cold ? `muncul ${cold.frequency}x (${cold.pct}%)` : '';
+    document.getElementById('hero-date').textContent = formatDate(r.draw_date);
+    document.getElementById('hero-4d').innerHTML = s.split('').map((d, i) =>
+      `<div class="digit-box ${posColors[i]}">
+        ${d}
+        <span class="pos-label-sm">${posNames[i]}</span>
+      </div>`
+    ).join('');
 
-  if (data.latestDraw) {
-    const d = data.latestDraw;
-    document.getElementById('stat-lastdate').textContent = d.draw_date;
-    document.getElementById('stat-period').textContent = d.period ? `Periode ${d.period}` : 'Terbaru';
-    document.getElementById('last-draw-date').textContent = d.draw_date;
-    const nums = [d.n1, d.n2, d.n3, d.n4, d.n5, d.n6];
-    renderBalls(nums, d.extra, document.getElementById('last-draw-balls'), 'ball-lg');
-    const extraEl = document.getElementById('last-draw-extra');
-    if (d.extra) {
-      extraEl.innerHTML = `<span class="text-xs text-muted">Extra: </span>${renderBall(d.extra, 'ball-sm', true)}`;
-    }
+    document.getElementById('hero-derived').innerHTML = `
+      <div class="derived-chip d4d">4D: <strong>${s}</strong></div>
+      <div class="derived-chip d3d">3D: <strong>${get3d(s)}</strong></div>
+      <div class="derived-chip d2d">2D: <strong>${get2d(s)}</strong></div>
+      <div class="derived-chip das">AS: <strong>${getAs(s)}</strong></div>
+    `;
+
+    document.getElementById('hero-detail').innerHTML = `
+      <div class="detail-item">
+        <div class="detail-label">KEPALA</div>
+        <div class="detail-value text-accent">${getKep(s)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">EKOR</div>
+        <div class="detail-value text-green">${getEkr(s)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">KOP</div>
+        <div class="detail-value text-blue">${getKop(s)}</div>
+      </div>
+    `;
+
+    // Stat cards
+    document.getElementById('stat-total').textContent = data.totalDraws;
+    document.getElementById('stat-2d-last').textContent = get2d(s);
+    document.getElementById('stat-as-last').textContent = getAs(s);
   }
 
-  renderFreqBars('hot-list', data.hot, '#ef4444', data.totalDraws);
-  renderFreqBars('cold-list', data.cold, '#3b82f6', data.totalDraws);
+  // Hot ekor
+  if (data.ekorStats) {
+    const hotEkor = [...data.ekorStats].sort((a, b) => a.lastDrawsAgo - b.lastDrawsAgo)[0];
+    document.getElementById('stat-hot-ekor').textContent = hotEkor?.digit ?? '—';
+    document.getElementById('stat-hot-ekor-sub').textContent = hotEkor ? `${hotEkor.count}x dalam data` : '';
+  }
 
-  const overdueEl = document.getElementById('overdue-list');
-  overdueEl.innerHTML = data.overdue.map(o =>
-    `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-      ${renderBall(o.number, '')}
-      <span class="text-xs text-muted">${o.lastDrawsAgo}x lalu</span>
+  // Hot 2D chips
+  renderHot2D(data.hot2D);
+
+  // Overdue 2D chips
+  renderOverdue2D(data.overdue2D);
+
+  // Recent results
+  renderRecentResults(data.recentResults);
+}
+
+function renderHot2D(items) {
+  const el = document.getElementById('hot-2d-list');
+  if (!el || !items) return;
+  el.innerHTML = items.slice(0, 10).map((x, i) => {
+    const cls = i === 0 ? 'hot' : i < 3 ? 'warm' : '';
+    return `<div class="chip ${cls}">
+      <span class="cn">${x.number}</span>
+      <span class="cs">${x.lastDrawsAgo === 0 ? 'Terbaru' : x.lastDrawsAgo + 'd lalu'}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderOverdue2D(items) {
+  const el = document.getElementById('overdue-2d-list');
+  if (!el || !items) return;
+  el.innerHTML = items.slice(0, 10).map(x =>
+    `<div class="chip overdue">
+      <span class="cn">${x.number}</span>
+      <span class="cs">${x.lastDrawsAgo} draw lalu</span>
     </div>`
   ).join('');
 }
 
-function renderFreqBars(elId, items, color, total) {
-  const max = items[0]?.frequency ?? 1;
-  const el = document.getElementById(elId);
-  el.innerHTML = items.map(item => `
-    <div class="chart-bar-row">
-      <div class="chart-bar-label">${item.number}</div>
-      <div class="chart-bar-outer">
-        <div class="chart-bar-inner" style="width:${(item.frequency/max*100).toFixed(1)}%; background:${color};"></div>
+function renderRecentResults(items) {
+  const el = document.getElementById('recent-results-list');
+  if (!el || !items) return;
+  el.innerHTML = items.slice(0, 5).map(r => `
+    <div class="recent-item">
+      <span class="recent-date">${r.draw_date?.slice(5) ?? '—'}</span>
+      <div class="recent-nums">
+        <span class="result-badge rb-4d">${fmt4d(r.result_4d)}</span>
+        <span class="result-badge rb-2d">${r.result_2d}</span>
       </div>
-      <div class="chart-bar-val">${item.frequency}x</div>
     </div>
   `).join('');
 }
 
-// ─── Quick predict ───────────────────────────────────────────────────────────
+function formatDate(s) {
+  if (!s) return '—';
+  const d = new Date(s + 'T00:00:00');
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+// ─── Quick Predict ─────────────────────────────────────────────
 
 async function refreshQuickPredict() {
-  const el = document.getElementById('quick-predict-balls');
+  const el = document.getElementById('quick-predict-2d');
   el.innerHTML = '<div class="loading-spinner"></div>';
   try {
-    const data = await api('/predict?mode=balanced');
-    renderBalls(data.predictions, data.extra, el, '');
+    const data = await api('/predict?type=2d&mode=hot');
+    el.innerHTML = data.predictions.slice(0, 6).map((p, i) =>
+      `<div class="predict-chip-2d rank-${i + 1}">
+        <span class="num">${p.number}</span>
+        <span class="rsn">${p.reason.replace(/[🔥⚡📊🧊📈]/g, '').trim()}</span>
+      </div>`
+    ).join('');
   } catch (e) {
-    el.innerHTML = `<span class="text-muted text-sm">${e.message}</span>`;
+    el.innerHTML = `<span class="text-muted" style="font-size:12px;">${e.message}</span>`;
   }
 }
 
-// ─── Prediction page ─────────────────────────────────────────────────────────
+// ─── Predict Page ──────────────────────────────────────────────
 
-function setMode(btn, mode) {
-  currentMode = mode;
+function setPredictType(btn, type) {
+  currentPredictType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadPredictions();
+}
+
+function setPredictMode(btn, mode) {
+  currentPredictMode = mode;
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  loadPrediction();
+  loadPredictions();
 }
 
-async function loadPrediction() {
-  const ballsEl = document.getElementById('predict-balls');
-  const extraEl = document.getElementById('predict-extra-row');
-  ballsEl.innerHTML = '<div class="loading-spinner"></div>';
-  extraEl.innerHTML = '';
-  document.getElementById('explain-list').innerHTML = '<div class="loading-spinner"></div>';
+async function loadPredictions() {
+  const el = document.getElementById('predict-results');
+  const titleEl = document.getElementById('predict-card-title');
+  if (!el) return;
+
+  const modeLabels = { hot: 'Mode Hot 🔥', cold: 'Mode Cold 🧊', balanced: 'Mode Balanced ⚖️' };
+  const typeLabels = { '4d': '4D', '3d': '3D', '2d': '2D' };
+  if (titleEl) titleEl.textContent = `🎯 Prediksi ${typeLabels[currentPredictType]} — ${modeLabels[currentPredictMode]}`;
+
+  el.innerHTML = '<div class="loading-spinner"></div>';
   try {
-    const data = await api(`/predict?mode=${currentMode}`);
-    renderBalls(data.predictions, data.extra, ballsEl, '');
-    if (data.extra) {
-      extraEl.innerHTML = `<span class="text-xs text-muted">Extra/Bonus: </span>${renderBall(data.extra, 'ball-sm', true)}`;
-    }
-    const fill = document.getElementById('confidence-fill');
-    const val = document.getElementById('confidence-val');
-    fill.style.width = '0%';
-    setTimeout(() => { fill.style.width = data.confidence + '%'; }, 50);
-    val.textContent = data.confidence;
-    document.getElementById('draws-analyzed').textContent = data.totalDrawsAnalyzed;
+    const data = await api(`/predict?type=${currentPredictType}&mode=${currentPredictMode}`);
+    const analyzedEl = document.getElementById('predict-draws-analyzed');
+    if (analyzedEl) analyzedEl.textContent = `${data.totalDrawsAnalyzed} draw dianalisis`;
 
-    renderExplanations(data.explanations);
-    renderHistChart();
-  } catch (e) {
-    ballsEl.innerHTML = `<span class="text-muted text-sm">${e.message}</span>`;
-    toast(e.message, 'error');
-  }
-}
-
-function renderExplanations(items) {
-  const el = document.getElementById('explain-list');
-  el.innerHTML = items.map(item => {
-    const cls = item.reason === 'Hot streak' ? 'hot' : item.reason === 'Overdue' ? 'overdue' :
-                item.reason === 'High frequency' ? 'freq' : 'stat';
-    return `
-      <div class="explain-item ${cls}">
-        ${renderBall(item.number, 'ball-sm')}
-        <div class="explain-meta">
-          <div>Frekuensi: <strong>${item.frequency}x</strong> (${item.pct}%) &nbsp;·&nbsp; Terakhir: <strong>${item.lastDrawsAgo}x draw lalu</strong></div>
-          <div>Skor bobot: <strong>${item.score}</strong></div>
-        </div>
-        <span class="explain-reason">${item.reason}</span>
-      </div>
-    `;
-  }).join('');
-}
-
-async function renderHistChart() {
-  try {
-    const data = await api('/history-chart');
-    const el = document.getElementById('hist-chart');
-    const maxSum = Math.max(...data.data.map(d => d.sum), 1);
-    el.innerHTML = data.data.slice(-10).map(d => `
-      <div class="chart-bar-row" style="margin-bottom:4px;">
-        <div style="font-size:10px;color:var(--text-muted);width:60px;flex-shrink:0;">${d.date?.slice(5) ?? ''}</div>
-        <div class="chart-bar-outer">
-          <div class="chart-bar-inner" style="width:${(d.sum/maxSum*100).toFixed(1)}%; background:linear-gradient(90deg,#3b82f6,#8b5cf6);"></div>
-        </div>
-        <div style="font-size:10px;color:var(--text-muted);width:30px;text-align:right;">Σ${d.sum}</div>
-      </div>
-    `).join('');
-  } catch (_) {}
-}
-
-// ─── Heatmap ──────────────────────────────────────────────────────────────────
-
-async function loadHeatmap() {
-  if (!statsCache) {
-    const data = await api('/stats');
-    statsCache = data;
-  }
-  renderHeatmap(statsCache);
-}
-
-function renderHeatmap(data) {
-  const grid = document.getElementById('num-grid');
-  if (!grid) return;
-  const maxFreq = Math.max(...data.numbers.map(n => n.frequency), 1);
-
-  grid.innerHTML = data.numbers.map(n => {
-    const ratio = n.frequency / maxFreq;
-    const heat = ratio >= 0.8 ? 5 : ratio >= 0.6 ? 4 : ratio >= 0.4 ? 3 : ratio >= 0.2 ? 2 : ratio > 0.05 ? 1 : 0;
-    return `
-      <div class="num-cell heat-${heat}" data-num="${n.number}" title="Angka ${n.number}: ${n.frequency}x (${n.pct}%), ${n.lastDrawsAgo} draw lalu">
-        <div class="num">${n.number}</div>
-        <div class="freq">${n.frequency}x</div>
-      </div>
-    `;
-  }).join('');
-
-  const freqDist = document.getElementById('freq-dist');
-  const maxF = Math.max(...data.numbers.map(n => n.frequency), 1);
-  freqDist.innerHTML = data.numbers.map(n => `
-    <div class="chart-bar-row">
-      <div class="chart-bar-label">${n.number}</div>
-      <div class="chart-bar-outer">
-        <div class="chart-bar-inner" style="width:${(n.frequency/maxF*100).toFixed(1)}%;background:${n.isHot?'#ef4444':n.isCold?'#3b82f6':'#10b981'};"></div>
-      </div>
-      <div class="chart-bar-val">${n.frequency}x</div>
-    </div>
-  `).join('');
-
-  const tbl = document.getElementById('freq-table');
-  const sorted = [...data.numbers].sort((a, b) => b.frequency - a.frequency);
-  tbl.innerHTML = sorted.map(n => `
-    <tr>
-      <td><strong>${n.number}</strong></td>
-      <td>${n.frequency}</td>
-      <td>${n.pct}%</td>
-      <td>${n.isHot ? '<span class="tag tag-hot">Hot</span>' : n.isCold ? '<span class="tag tag-cold">Cold</span>' : '—'}</td>
-      <td class="${n.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${n.lastDrawsAgo} draw lalu</td>
-    </tr>
-  `).join('');
-}
-
-// ─── History ──────────────────────────────────────────────────────────────────
-
-async function loadHistory() {
-  const tbody = document.getElementById('history-table');
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;"><div class="loading-spinner" style="margin:1rem auto;"></div></td></tr>';
-  try {
-    const data = await api(`/results?limit=${PAGE_SIZE}&offset=${historyPage * PAGE_SIZE}`);
-    historyTotal = data.total;
-    document.getElementById('history-count').textContent = `${data.total} hasil`;
-    document.getElementById('pager-info').textContent = `${historyPage * PAGE_SIZE + 1}–${Math.min((historyPage+1)*PAGE_SIZE, data.total)} dari ${data.total}`;
-    document.getElementById('pager-prev').disabled = historyPage === 0;
-    document.getElementById('pager-next').disabled = (historyPage + 1) * PAGE_SIZE >= data.total;
-
-    tbody.innerHTML = data.data.map((r, i) => {
-      const nums = [r.n1, r.n2, r.n3, r.n4, r.n5, r.n6];
+    const maxScore = Math.max(...data.predictions.map(p => p.score), 1);
+    el.innerHTML = data.predictions.map((p, i) => {
+      const numClass = currentPredictType === '4d' ? '' : currentPredictType === '3d' ? 'sm' : 'sm';
+      const pct = Math.round((p.score / maxScore) * 100);
       return `
-        <tr>
-          <td class="text-muted">${data.total - (historyPage * PAGE_SIZE + i)}</td>
-          <td>${r.period ?? '—'}</td>
-          <td>${r.draw_date}</td>
-          <td><div class="balls-row">${nums.map(n => renderBall(n, 'ball-sm')).join('')}</div></td>
-          <td>${r.extra ? renderBall(r.extra, 'ball-sm', true) : '—'}</td>
-          <td><span class="tag ${r.source === 'manual' ? 'tag-overdue' : 'tag-cold'}">${r.source}</span></td>
-          <td>${r.source === 'manual' ? `<button class="btn btn-danger" onclick="deleteResult(${r.id}, this)">🗑</button>` : ''}</td>
-        </tr>
+        <div class="predict-item rank-${i + 1}">
+          <div class="predict-rank">#${i + 1}</div>
+          <div class="predict-num ${numClass} mono">${p.number}</div>
+          <div class="predict-info">
+            <div class="predict-reason">${p.reason}</div>
+            <div class="predict-score-bar">
+              <div class="predict-score-fill" style="width:${pct}%"></div>
+            </div>
+          </div>
+          <div class="predict-score-label">${p.score}</div>
+        </div>
       `;
     }).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted" style="text-align:center;">${e.message}</td></tr>`;
+    el.innerHTML = `<div style="padding:1rem;color:var(--text-muted);font-size:13px;">❌ ${e.message}</div>`;
+  }
+}
+
+// ─── Analysis Page ─────────────────────────────────────────────
+
+function renderAnalysis(data) {
+  if (!data) return;
+  renderPosHeatmap(data.posStats);
+  renderDigitChart('kepala-chart', data.kepalaStats);
+  renderDigitChart('ekor-chart', data.ekorStats);
+  render2DTable(data.freq2D);
+  render3DChips(data.freq3D);
+}
+
+function renderPosHeatmap(posStats) {
+  const el = document.getElementById('pos-heatmap');
+  if (!el || !posStats) return;
+  const maxCount = Math.max(...posStats.flatMap(ps => ps.digits.map(d => d.count)), 1);
+  el.innerHTML = posStats.map(ps => {
+    const sorted = [...ps.digits].sort((a, b) => b.count - a.count);
+    const topDigit = sorted[0]?.digit;
+    return `<div class="pos-col">
+      ${ps.digits.map(d => {
+        const ratio = d.count / maxCount;
+        const heat = ratio >= 0.5 ? 5 : ratio >= 0.35 ? 4 : ratio >= 0.22 ? 3 : ratio >= 0.12 ? 2 : ratio > 0.03 ? 1 : 0;
+        const isTop = d.digit === topDigit ? 'is-top' : '';
+        return `<div class="pos-cell heat-${heat} ${isTop}" title="Digit ${d.digit}: ${d.count}x (${d.pct}%), ${d.lastDrawsAgo} draw lalu">
+          <span class="dc">${d.digit}</span>
+          <span class="dv">${d.count}x</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+function renderDigitChart(elId, stats) {
+  const el = document.getElementById(elId);
+  if (!el || !stats) return;
+  const maxCount = Math.max(...stats.map(d => d.count), 1);
+  el.innerHTML = stats.map(d => {
+    const pct = (d.count / maxCount * 100).toFixed(0);
+    const color = d.lastDrawsAgo < 3 ? '#ef4444' : d.lastDrawsAgo < 8 ? '#f59e0b' : '#3b82f6';
+    return `<div class="dfc-row">
+      <div class="dfc-label">${d.digit}</div>
+      <div class="dfc-bar">
+        <div class="dfc-fill" style="width:${pct}%;background:${color};"></div>
+      </div>
+      <div class="dfc-val">${d.count}x</div>
+    </div>`;
+  }).join('');
+}
+
+function render2DTable(items) {
+  const tbody = document.getElementById('freq-2d-table');
+  if (!tbody || !items) return;
+  tbody.innerHTML = items.slice(0, 20).map(x => {
+    const status = x.isHot
+      ? '<span class="tag tag-hot">Hot</span>'
+      : x.isOverdue
+      ? '<span class="tag tag-overdue">Overdue</span>'
+      : '—';
+    return `<tr>
+      <td class="mono" style="font-weight:700;font-size:16px;">${x.number}</td>
+      <td>${x.count}x</td>
+      <td class="${x.lastDrawsAgo > 10 ? 'text-accent' : 'text-muted'}">${x.lastDrawsAgo === 0 ? 'Terbaru' : x.lastDrawsAgo + ' draw lalu'}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+function render3DChips(items) {
+  const el = document.getElementById('freq-3d-list');
+  if (!el || !items) return;
+  el.innerHTML = items.slice(0, 15).map(x =>
+    `<div class="chip-lg">
+      ${x.number}
+      <span class="cnt">${x.count}x · ${x.lastDrawsAgo}d lalu</span>
+    </div>`
+  ).join('');
+}
+
+// ─── History ───────────────────────────────────────────────────
+
+async function loadHistory() {
+  const tbody = document.getElementById('history-table');
+  const mobileList = document.getElementById('history-list-mobile');
+  const loading = '<div class="loading-spinner"></div>';
+
+  if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;"><div class="loading-spinner" style="margin:1rem auto;"></div></td></tr>';
+  if (mobileList) mobileList.innerHTML = loading;
+
+  try {
+    const data = await api(`/results?limit=${PAGE_SIZE}&offset=${historyPage * PAGE_SIZE}`);
+    historyTotal = data.total;
+    const count = document.getElementById('history-count');
+    if (count) count.textContent = `${data.total} total`;
+
+    const info = document.getElementById('pager-info');
+    if (info) info.textContent = `${historyPage * PAGE_SIZE + 1}–${Math.min((historyPage + 1) * PAGE_SIZE, data.total)} dari ${data.total}`;
+
+    const prev = document.getElementById('pager-prev');
+    const next = document.getElementById('pager-next');
+    if (prev) prev.disabled = historyPage === 0;
+    if (next) next.disabled = (historyPage + 1) * PAGE_SIZE >= data.total;
+
+    // Desktop table
+    if (tbody) {
+      tbody.innerHTML = data.data.map((r, i) => {
+        const s = fmt4d(r.result_4d);
+        const srcTag = r.source === 'manual'
+          ? '<span class="tag tag-manual">manual</span>'
+          : '<span class="tag tag-seed">seed</span>';
+        const del = r.source === 'manual'
+          ? `<button class="btn btn-danger" onclick="deleteResult(${r.id})">🗑</button>`
+          : '';
+        return `<tr>
+          <td class="text-muted">${data.total - (historyPage * PAGE_SIZE + i)}</td>
+          <td>${r.draw_date}</td>
+          <td class="mono" style="font-weight:700;font-size:15px;color:var(--accent)">${s}</td>
+          <td class="mono text-green">${get3d(s)}</td>
+          <td class="mono text-blue">${get2d(s)}</td>
+          <td class="mono">${getAs(s)}</td>
+          <td class="mono">${getKep(s)}</td>
+          <td class="mono">${getEkr(s)}</td>
+          <td>${srcTag}</td>
+          <td>${del}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Mobile list
+    if (mobileList) {
+      mobileList.innerHTML = data.data.map(r => {
+        const s = fmt4d(r.result_4d);
+        const del = r.source === 'manual'
+          ? `<button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="deleteResult(${r.id})">🗑</button>`
+          : '';
+        return `<div class="history-card">
+          <div>
+            <div class="hc-date">${r.draw_date}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${r.source === 'manual' ? '✏️ manual' : '📦 seed'}</div>
+          </div>
+          <div class="hc-nums">
+            <div class="hc-4d">${s}</div>
+            <div class="hc-derived">
+              <span class="result-badge rb-3d">${get3d(s)}</span>
+              <span class="result-badge rb-2d">${get2d(s)}</span>
+            </div>
+          </div>
+          <div class="hc-del">${del}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch (e) {
+    const msg = `<div style="text-align:center;padding:1rem;color:var(--text-muted);">${e.message}</div>`;
+    if (mobileList) mobileList.innerHTML = msg;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">${e.message}</td></tr>`;
     toast(e.message, 'error');
   }
 }
@@ -302,11 +434,12 @@ function changePage(dir) {
   loadHistory();
 }
 
-async function deleteResult(id, btn) {
+async function deleteResult(id) {
   if (!confirm('Hapus result ini?')) return;
   try {
     await api(`/results/${id}`, { method: 'DELETE' });
     toast('Result dihapus');
+    statsCache = null;
     loadHistory();
     loadStats();
   } catch (e) {
@@ -314,118 +447,60 @@ async function deleteResult(id, btn) {
   }
 }
 
-// ─── Form ─────────────────────────────────────────────────────────────────────
+// ─── Input Form ────────────────────────────────────────────────
+
+function previewDerived() {
+  const val = document.getElementById('f-4d')?.value ?? '';
+  const preview = document.getElementById('derived-preview');
+  if (val.length >= 1) {
+    const s = val.padStart(4, '0');
+    document.getElementById('prev-3d').textContent = get3d(s);
+    document.getElementById('prev-2d').textContent = get2d(s);
+    document.getElementById('prev-kep').textContent = s[2] || '?';
+    document.getElementById('prev-ekr').textContent = s[3] || '?';
+    if (preview) preview.style.display = 'flex';
+  } else {
+    if (preview) preview.style.display = 'none';
+  }
+}
 
 async function submitResult(e) {
   e.preventDefault();
-  const nums = ['n1','n2','n3','n4','n5','n6'].map(id => parseInt(document.getElementById('f-' + id).value));
-  const uniqueNums = new Set(nums);
-  if (uniqueNums.size < 6) { toast('6 angka harus unik!', 'error'); return; }
-  if (nums.some(n => n < 1 || n > 49)) { toast('Semua angka harus antara 1–49', 'error'); return; }
+  const draw_date = document.getElementById('f-date').value;
+  const result_4d = document.getElementById('f-4d').value;
 
-  const body = {
-    draw_date: document.getElementById('f-date').value,
-    period: document.getElementById('f-period').value || undefined,
-    n1: nums[0], n2: nums[1], n3: nums[2], n4: nums[3], n5: nums[4], n6: nums[5],
-    extra: document.getElementById('f-extra').value ? parseInt(document.getElementById('f-extra').value) : undefined,
-  };
+  if (!draw_date || !result_4d) {
+    toast('Semua field wajib diisi', 'error');
+    return;
+  }
+  if (!/^\d{1,4}$/.test(result_4d)) {
+    toast('Nomor 4D harus berupa angka (0000–9999)', 'error');
+    return;
+  }
 
   try {
-    await api('/results', { method: 'POST', body: JSON.stringify(body) });
-    toast('Result berhasil disimpan! 🎉');
+    const res = await api('/results', {
+      method: 'POST',
+      body: JSON.stringify({ draw_date, result_4d }),
+    });
+    const s = fmt4d(res.result_4d);
+    toast(`✅ Tersimpan! ${s} → 3D:${get3d(s)} 2D:${get2d(s)}`);
     document.getElementById('add-form').reset();
+    document.getElementById('derived-preview').style.display = 'none';
     statsCache = null;
-    loadStats();
+    await loadStats();
     refreshQuickPredict();
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
-// ─── Sync ─────────────────────────────────────────────────────────────────────
+// ─── Init ──────────────────────────────────────────────────────
 
-async function loadSyncStatus() {
-  try {
-    const data = await api('/sync/status');
-    const dot = document.getElementById('sync-dot');
-    const lastTime = document.getElementById('sync-last-time');
-    const totalAuto = document.getElementById('sync-total-auto');
-    const lastStatus = document.getElementById('sync-last-status');
-
-    dot.className = 'sync-dot ' + (data.last?.status ?? 'empty');
-
-    if (data.last?.fetched_at) {
-      const d = new Date(data.last.fetched_at + 'Z');
-      lastTime.textContent = d.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-    } else {
-      lastTime.textContent = 'Belum pernah';
-    }
-
-    totalAuto.textContent = data.totalAutoRecords ?? 0;
-
-    if (data.last?.status === 'ok') {
-      lastStatus.innerHTML = `<span class="text-green">✓ Berhasil</span> (+${data.last.added ?? 0} baru)`;
-    } else if (data.last?.status === 'error') {
-      lastStatus.innerHTML = `<span class="text-red">✗ Error</span>`;
-    } else if (data.last?.status === 'empty') {
-      lastStatus.innerHTML = `<span class="text-muted">Tidak ada data baru</span>`;
-    } else {
-      lastStatus.textContent = '—';
-    }
-  } catch (e) {
-    console.warn('Sync status error:', e.message);
-  }
-}
-
-async function runSync() {
-  const btn = document.getElementById('sync-manual-btn');
-  const navBtn = document.getElementById('sync-nav-btn');
-  const navIcon = document.getElementById('sync-nav-icon');
-  const resultToast = document.getElementById('sync-result-toast');
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Sedang sync...';
-  navBtn.classList.add('syncing');
-  navIcon.style.display = 'inline-block';
-  resultToast.className = 'sync-result-toast';
-
-  try {
-    const data = await api('/sync/run', { method: 'POST' });
-
-    let msg = '';
-    if (data.added > 0) {
-      msg = `✅ +${data.added} draw baru ditambahkan!`;
-      toast(`${data.added} draw baru berhasil disimpan! 🎉`);
-      statsCache = null;
-      loadStats();
-      refreshQuickPredict();
-    } else if (data.errors?.length > 0) {
-      msg = `⚠️ Sync error: ${data.errors[0]}`;
-      toast('Sync gagal: sumber data tidak tersedia', 'error');
-    } else {
-      msg = `ℹ️ Tidak ada data baru (${data.skipped} sudah ada)`;
-      toast('Data sudah up-to-date, tidak ada draw baru');
-    }
-
-    resultToast.textContent = msg;
-    resultToast.className = 'sync-result-toast visible';
-    await loadSyncStatus();
-
-    setTimeout(() => { resultToast.className = 'sync-result-toast'; }, 6000);
-  } catch (e) {
-    toast('Sync gagal: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔄 Sync Sekarang';
-    navBtn.classList.remove('syncing');
-  }
-}
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-
+// Set today's date
 document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 
 (async function init() {
-  await Promise.all([loadStats(), loadSyncStatus()]);
+  await loadStats();
   refreshQuickPredict();
 })();

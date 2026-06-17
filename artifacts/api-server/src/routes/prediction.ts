@@ -3,174 +3,377 @@ import { db } from "../db/sqlite.js";
 
 const router = Router();
 
-interface ResultRow {
+interface Row {
   id: number;
   draw_date: string;
-  period: string | null;
-  n1: number; n2: number; n3: number; n4: number; n5: number; n6: number;
-  extra: number | null;
+  result_4d: string;
+  result_3d: string;
+  result_2d: string;
+  source: string;
 }
 
-function getAllNumbers(row: ResultRow): number[] {
-  return [row.n1, row.n2, row.n3, row.n4, row.n5, row.n6];
-}
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
-function buildStats(rows: ResultRow[]) {
-  const freq: Record<number, number> = {};
-  const lastSeen: Record<number, number> = {};
-  for (let n = 1; n <= 49; n++) freq[n] = 0;
-
+function buildPosFreq(rows: Row[]) {
+  const posFreq: number[][] = Array.from({ length: 4 }, () => Array(10).fill(0));
+  const lastSeen: number[][] = Array.from({ length: 4 }, () => Array(10).fill(rows.length));
   rows.forEach((row, idx) => {
-    getAllNumbers(row).forEach((n) => {
-      freq[n]!++;
-      if (lastSeen[n] === undefined) lastSeen[n] = idx;
-    });
+    const s = row.result_4d.padStart(4, "0");
+    for (let p = 0; p < 4; p++) {
+      const d = parseInt(s[p]!);
+      posFreq[p]![d]!++;
+      if (lastSeen[p]![d] === rows.length) lastSeen[p]![d] = idx;
+    }
   });
-
-  for (let n = 1; n <= 49; n++) {
-    if (lastSeen[n] === undefined) lastSeen[n] = rows.length;
-  }
-
-  return { freq, lastSeen };
+  return { posFreq, lastSeen };
 }
+
+function build2dFreq(rows: Row[]) {
+  const freq: Record<string, { count: number; lastIdx: number }> = {};
+  rows.forEach((row, idx) => {
+    const key = row.result_2d;
+    if (!freq[key]) freq[key] = { count: 0, lastIdx: rows.length };
+    freq[key]!.count++;
+    if (freq[key]!.lastIdx === rows.length) freq[key]!.lastIdx = idx;
+  });
+  return freq;
+}
+
+function build3dFreq(rows: Row[]) {
+  const freq: Record<string, { count: number; lastIdx: number }> = {};
+  rows.forEach((row, idx) => {
+    const key = row.result_3d;
+    if (!freq[key]) freq[key] = { count: 0, lastIdx: rows.length };
+    freq[key]!.count++;
+    if (freq[key]!.lastIdx === rows.length) freq[key]!.lastIdx = idx;
+  });
+  return freq;
+}
+
+function weightedPickDigit(
+  posFreq: number[],
+  lastSeen: number[],
+  mode: string,
+  total: number
+): number {
+  const weights = posFreq.map((count, d) => {
+    const freqW = count / (total || 1);
+    const recentW = 1 / (lastSeen[d]! + 1);
+    const overdueW = (lastSeen[d]! + 1) / (total + 1);
+    if (mode === "hot") return freqW * 0.4 + recentW * 0.6 + 0.01;
+    if (mode === "cold") return (1 - freqW) * 0.4 + overdueW * 0.6 + 0.01;
+    return freqW * 0.35 + recentW * 0.35 + overdueW * 0.3 + 0.01;
+  });
+  const totalW = weights.reduce((s, w) => s + w, 0);
+  let r = Math.random() * totalW;
+  for (let d = 0; d < 10; d++) {
+    r -= weights[d]!;
+    if (r <= 0) return d;
+  }
+  return 9;
+}
+
+// ─── /api/stats ────────────────────────────────────────────────────────────
 
 router.get("/stats", (req, res): void => {
   const rows = db.prepare(
-    `SELECT * FROM results ORDER BY draw_date DESC, id DESC LIMIT 200`
-  ).all() as ResultRow[];
+    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 100`
+  ).all() as Row[];
 
-  if (rows.length === 0) { res.json({ freq: {}, hot: [], cold: [], overdue: [] }); return; }
-
-  const { freq, lastSeen } = buildStats(rows);
+  if (rows.length === 0) {
+    res.json({ totalDraws: 0, recentResults: [], posStats: [], hot2D: [], overdue2D: [], freq2D: [], freq3D: [] });
+    return;
+  }
 
   const total = rows.length;
-  const numbers = Array.from({ length: 49 }, (_, i) => i + 1);
+  const { posFreq, lastSeen } = buildPosFreq(rows);
+  const freq2D = build2dFreq(rows);
+  const freq3D = build3dFreq(rows);
 
-  const withStats = numbers.map((n) => ({
-    number: n,
-    frequency: freq[n]!,
-    pct: parseFloat(((freq[n]! / total) * 100).toFixed(1)),
-    lastDrawsAgo: lastSeen[n]!,
-    isHot: lastSeen[n]! < 5,
-    isCold: lastSeen[n]! > 15,
+  // Positional analysis
+  const posStats = [0, 1, 2, 3].map((p) => {
+    const digits = Array.from({ length: 10 }, (_, d) => ({
+      digit: d,
+      count: posFreq[p]![d]!,
+      pct: parseFloat(((posFreq[p]![d]! / total) * 100).toFixed(1)),
+      lastDrawsAgo: lastSeen[p]![d]!,
+    }));
+    const hotDigit = [...digits].sort((a, b) => a.lastDrawsAgo - b.lastDrawsAgo)[0]!;
+    const coldDigit = [...digits].sort((a, b) => b.lastDrawsAgo - a.lastDrawsAgo)[0]!;
+    const freqDigit = [...digits].sort((a, b) => b.count - a.count)[0]!;
+    return { pos: p + 1, label: ["AS(P1)", "KOP(P2)", "KEPALA", "EKOR"][p], digits, hotDigit, coldDigit, freqDigit };
+  });
+
+  // 2D analysis
+  const sorted2D = Object.entries(freq2D).map(([num, { count, lastIdx }]) => ({
+    number: num,
+    count,
+    lastDrawsAgo: lastIdx,
+    isHot: lastIdx < 5,
+    isOverdue: lastIdx > 10,
   }));
 
-  const hotNums = [...withStats].sort((a, b) => b.frequency - a.frequency).slice(0, 10);
-  const coldNums = [...withStats].sort((a, b) => a.frequency - b.frequency).slice(0, 10);
-  const overdueNums = [...withStats].sort((a, b) => b.lastDrawsAgo - a.lastDrawsAgo).slice(0, 10);
+  const hot2D = [...sorted2D].sort((a, b) => a.lastDrawsAgo - b.lastDrawsAgo).slice(0, 12);
+  const freq2DTop = [...sorted2D].sort((a, b) => b.count - a.count || a.lastDrawsAgo - b.lastDrawsAgo).slice(0, 12);
+  const overdue2D = sorted2D.filter((x) => x.lastDrawsAgo > 10).sort((a, b) => b.lastDrawsAgo - a.lastDrawsAgo).slice(0, 12);
+
+  // 3D frequency
+  const freq3DTop = Object.entries(freq3D)
+    .map(([num, { count, lastIdx }]) => ({ number: num, count, lastDrawsAgo: lastIdx }))
+    .sort((a, b) => b.count - a.count || a.lastDrawsAgo - b.lastDrawsAgo)
+    .slice(0, 15);
+
+  // Ekor / Kepala analysis
+  const kepalaCounts = Array(10).fill(0);
+  const ekorCounts = Array(10).fill(0);
+  const kepalaSeen = Array(10).fill(total);
+  const ekorSeen = Array(10).fill(total);
+  rows.forEach((row, idx) => {
+    const s = row.result_4d.padStart(4, "0");
+    const kep = parseInt(s[2]!);
+    const ek = parseInt(s[3]!);
+    kepalaCounts[kep]++;
+    ekorCounts[ek]++;
+    if (kepalaSeen[kep] === total) kepalaSeen[kep] = idx;
+    if (ekorSeen[ek] === total) ekorSeen[ek] = idx;
+  });
+
+  const kepalaStats = Array.from({ length: 10 }, (_, d) => ({
+    digit: d,
+    count: kepalaCounts[d],
+    pct: parseFloat(((kepalaCounts[d] / total) * 100).toFixed(1)),
+    lastDrawsAgo: kepalaSeen[d],
+  }));
+  const ekorStats = Array.from({ length: 10 }, (_, d) => ({
+    digit: d,
+    count: ekorCounts[d],
+    pct: parseFloat(((ekorCounts[d] / total) * 100).toFixed(1)),
+    lastDrawsAgo: ekorSeen[d],
+  }));
 
   res.json({
     totalDraws: total,
-    numbers: withStats,
-    hot: hotNums,
-    cold: coldNums,
-    overdue: overdueNums,
-    latestDraw: rows[0],
+    latestResult: rows[0],
+    recentResults: rows.slice(0, 10),
+    posStats,
+    hot2D,
+    freq2D: freq2DTop,
+    overdue2D,
+    freq3D: freq3DTop,
+    kepalaStats,
+    ekorStats,
   });
 });
+
+// ─── /api/predict ──────────────────────────────────────────────────────────
 
 router.get("/predict", (req, res): void => {
-  const mode = (req.query["mode"] as string) ?? "balanced";
+  const type = (req.query["type"] as string) ?? "2d";
+  const mode = (req.query["mode"] as string) ?? "hot";
+
   const rows = db.prepare(
-    `SELECT * FROM results ORDER BY draw_date DESC, id DESC LIMIT 100`
-  ).all() as ResultRow[];
+    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`
+  ).all() as Row[];
 
-  if (rows.length < 5) {
-    res.status(400).json({ error: "Not enough data. Add at least 5 draws first." }); return;
+  if (rows.length < 3) {
+    res.status(400).json({ error: "Data kurang, tambahkan minimal 3 result dahulu." });
+    return;
   }
 
-  const { freq, lastSeen } = buildStats(rows);
-  const totalDraws = rows.length;
+  const total = rows.length;
 
-  const recentRows = rows.slice(0, 20);
-  const recentFreq: Record<number, number> = {};
-  for (let n = 1; n <= 49; n++) recentFreq[n] = 0;
-  recentRows.forEach((row) => getAllNumbers(row).forEach((n) => recentFreq[n]!++));
+  if (type === "2d") {
+    const freq2D = build2dFreq(rows);
+    const all2D = Object.entries(freq2D).map(([num, { count, lastIdx }]) => {
+      const freqW = count / total;
+      const recentW = 1 / (lastIdx + 1);
+      const overdueW = (lastIdx + 1) / (total + 1);
+      let score: number;
+      if (mode === "hot") score = freqW * 0.4 + recentW * 0.6;
+      else if (mode === "cold") score = (1 - freqW) * 0.5 + overdueW * 0.5;
+      else score = freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+      return { number: num, count, lastDrawsAgo: lastIdx, score };
+    });
 
-  const scores: Record<number, number> = {};
-  for (let n = 1; n <= 49; n++) {
-    const freqScore = freq[n]! / totalDraws;
-    const recentScore = recentFreq[n]! / 20;
-    const overdueScore = Math.min(lastSeen[n]! / 15, 1.5);
+    // Also generate positional-based 2D candidates
+    const { posFreq, lastSeen } = buildPosFreq(rows);
+    const posKep = Array.from({ length: 10 }, (_, d) => ({
+      d,
+      w: posFreq[2]![d]! / total + 1 / (lastSeen[2]![d]! + 1),
+    }));
+    const posEkor = Array.from({ length: 10 }, (_, d) => ({
+      d,
+      w: posFreq[3]![d]! / total + 1 / (lastSeen[3]![d]! + 1),
+    }));
+    const hotKep = posKep.sort((a, b) => b.w - a.w)[0]!.d;
+    const hotEkor = posEkor.sort((a, b) => b.w - a.w)[0]!.d;
+    const positionalNum = `${hotKep}${hotEkor}`;
 
-    if (mode === "hot") {
-      scores[n] = freqScore * 0.3 + recentScore * 0.7;
-    } else if (mode === "cold") {
-      scores[n] = (1 - freqScore) * 0.4 + overdueScore * 0.6;
-    } else {
-      scores[n] = freqScore * 0.35 + recentScore * 0.35 + overdueScore * 0.3;
+    const sorted = all2D.sort((a, b) => b.score - a.score);
+    const top = sorted.slice(0, 8);
+
+    // Add positional candidate if not already there
+    if (!top.find((x) => x.number === positionalNum)) {
+      top.push({ number: positionalNum, count: freq2D[positionalNum]?.count ?? 0, lastDrawsAgo: freq2D[positionalNum]?.lastIdx ?? 99, score: 0.5 });
     }
-  }
 
-  function weightedPick(exclude: number[]): number {
-    const candidates = Array.from({ length: 49 }, (_, i) => i + 1).filter(
-      (n) => !exclude.includes(n)
-    );
-    const totalWeight = candidates.reduce((s, n) => s + (scores[n] ?? 0), 0);
-    let r = Math.random() * totalWeight;
-    for (const n of candidates) {
-      r -= scores[n] ?? 0;
-      if (r <= 0) return n;
+    res.json({
+      type: "2d",
+      mode,
+      predictions: top.slice(0, 8).map((x) => ({
+        number: x.number,
+        count: x.count,
+        lastDrawsAgo: x.lastDrawsAgo,
+        score: Math.round(50 + x.score * 500),
+        reason:
+          x.lastDrawsAgo === 0
+            ? "🔥 Muncul di draw terbaru!"
+            : x.lastDrawsAgo < 3
+            ? `⚡ Sangat hot — ${x.lastDrawsAgo} draw lalu`
+            : x.count >= 2
+            ? `📊 Muncul ${x.count}x dalam data`
+            : x.lastDrawsAgo > 15
+            ? `🧊 Overdue — ${x.lastDrawsAgo} draw absen`
+            : `📈 Score analitik tinggi`,
+      })),
+      totalDrawsAnalyzed: total,
+    });
+  } else if (type === "3d") {
+    const freq3D = build3dFreq(rows);
+    const { posFreq, lastSeen } = buildPosFreq(rows);
+
+    const all3D = Object.entries(freq3D).map(([num, { count, lastIdx }]) => {
+      const freqW = count / total;
+      const recentW = 1 / (lastIdx + 1);
+      const overdueW = (lastIdx + 1) / (total + 1);
+      let score: number;
+      if (mode === "hot") score = freqW * 0.4 + recentW * 0.6;
+      else if (mode === "cold") score = (1 - freqW) * 0.5 + overdueW * 0.5;
+      else score = freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+      return { number: num, count, lastDrawsAgo: lastIdx, score };
+    });
+
+    const sorted3D = all3D.sort((a, b) => b.score - a.score).slice(0, 5);
+    const predictions = sorted3D.map((x) => ({
+      number: x.number,
+      count: x.count,
+      lastDrawsAgo: x.lastDrawsAgo,
+      score: Math.round(50 + x.score * 400),
+      reason:
+        x.count >= 2
+          ? `Muncul ${x.count}x dalam data`
+          : x.lastDrawsAgo < 5
+          ? `Hot — ${x.lastDrawsAgo} draw lalu`
+          : x.lastDrawsAgo > 15
+          ? `Overdue — ${x.lastDrawsAgo} draw absen`
+          : "Pola posisional",
+    }));
+
+    // Add 2 positional-generated candidates
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const digits = [1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
+      const num = digits.map(String).join("");
+      if (!predictions.find((x) => x.number === num)) {
+        predictions.push({
+          number: num,
+          count: freq3D[num]?.count ?? 0,
+          lastDrawsAgo: freq3D[num]?.lastIdx ?? 99,
+          score: Math.round(50 + Math.random() * 25),
+          reason: "Kombinasi digit terpanas per posisi",
+        });
+        if (predictions.length >= 7) break;
+      }
     }
-    return candidates[candidates.length - 1]!;
+
+    res.json({ type: "3d", mode, predictions: predictions.slice(0, 7), totalDrawsAnalyzed: total });
+  } else {
+    // 4D
+    const { posFreq, lastSeen } = buildPosFreq(rows);
+
+    const predictions: { number: string; count: number; lastDrawsAgo: number; score: number; reason: string }[] = [];
+
+    // Strategy 1: hottest digit per position
+    const hotDigits = [0, 1, 2, 3].map((p) => {
+      let best = 0;
+      let bestScore = -1;
+      for (let d = 0; d < 10; d++) {
+        const s = posFreq[p]![d]! / total + 5 / (lastSeen[p]![d]! + 1);
+        if (s > bestScore) { bestScore = s; best = d; }
+      }
+      return best;
+    });
+    const hot4D = hotDigits.map(String).join("").padStart(4, "0");
+    const rowFreq = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(hot4D) as { c: number };
+    predictions.push({ number: hot4D, count: rowFreq.c, lastDrawsAgo: 0, score: 88, reason: "🔥 Digit terpanas setiap posisi" });
+
+    // Strategy 2: most frequent digit per position
+    const freqDigits = [0, 1, 2, 3].map((p) => {
+      let best = 0, bestCount = -1;
+      for (let d = 0; d < 10; d++) {
+        if (posFreq[p]![d]! > bestCount) { bestCount = posFreq[p]![d]!; best = d; }
+      }
+      return best;
+    });
+    const freq4D = freqDigits.map(String).join("").padStart(4, "0");
+    if (freq4D !== hot4D) {
+      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(freq4D) as { c: number };
+      predictions.push({ number: freq4D, count: f.c, lastDrawsAgo: 0, score: 82, reason: "📊 Digit paling sering setiap posisi" });
+    }
+
+    // Strategy 3: overdue — digit not seen recently per position
+    const overdueDigits = [0, 1, 2, 3].map((p) => {
+      let worst = 0, worstSeen = -1;
+      for (let d = 0; d < 10; d++) {
+        if (lastSeen[p]![d]! > worstSeen && posFreq[p]![d]! > 0) {
+          worstSeen = lastSeen[p]![d]!; worst = d;
+        }
+      }
+      return worst;
+    });
+    const overdue4D = overdueDigits.map(String).join("").padStart(4, "0");
+    if (!predictions.find((x) => x.number === overdue4D)) {
+      const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(overdue4D) as { c: number };
+      predictions.push({ number: overdue4D, count: f.c, lastDrawsAgo: 0, score: 75, reason: "🧊 Digit overdue setiap posisi" });
+    }
+
+    // Strategy 4–7: weighted random picks
+    for (let i = 0; i < 5; i++) {
+      const digits = [0, 1, 2, 3].map((p) => weightedPickDigit(posFreq[p]!, lastSeen[p]!, mode, total));
+      const num = digits.map(String).join("").padStart(4, "0");
+      if (!predictions.find((x) => x.number === num)) {
+        const f = db.prepare("SELECT COUNT(*) as c FROM hk4d_results WHERE result_4d = ?").get(num) as { c: number };
+        predictions.push({
+          number: num, count: f.c, lastDrawsAgo: 0,
+          score: Math.round(60 + Math.random() * 20),
+          reason: `${mode === "hot" ? "Hot" : mode === "cold" ? "Cold" : "Balanced"} weighted pick`,
+        });
+        if (predictions.length >= 8) break;
+      }
+    }
+
+    res.json({ type: "4d", mode, predictions: predictions.slice(0, 8), totalDrawsAnalyzed: total });
   }
-
-  const predictions: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    predictions.push(weightedPick(predictions));
-  }
-  predictions.sort((a, b) => a - b);
-
-  const extraPool = Array.from({ length: 49 }, (_, i) => i + 1).filter(
-    (n) => !predictions.includes(n)
-  );
-  const extra = extraPool[Math.floor(Math.random() * extraPool.length)]!;
-
-  const confidence = Math.min(
-    Math.round(55 + predictions.reduce((s, n) => s + scores[n]!, 0) * 50),
-    92
-  );
-
-  const explanations = predictions.map((n) => ({
-    number: n,
-    frequency: freq[n]!,
-    pct: parseFloat(((freq[n]! / totalDraws) * 100).toFixed(1)),
-    lastDrawsAgo: lastSeen[n]!,
-    score: parseFloat((scores[n]! * 100).toFixed(2)),
-    reason:
-      lastSeen[n]! > 10
-        ? "Overdue"
-        : recentFreq[n]! >= 3
-        ? "Hot streak"
-        : freq[n]! > totalDraws * 0.15
-        ? "High frequency"
-        : "Statistical pick",
-  }));
-
-  res.json({
-    predictions,
-    extra,
-    mode,
-    confidence,
-    totalDrawsAnalyzed: totalDraws,
-    explanations,
-    generatedAt: new Date().toISOString(),
-  });
 });
+
+// ─── /api/history-chart ────────────────────────────────────────────────────
 
 router.get("/history-chart", (req, res) => {
   const rows = db.prepare(
-    `SELECT * FROM results ORDER BY draw_date DESC, id DESC LIMIT 30`
-  ).all() as ResultRow[];
+    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 30`
+  ).all() as Row[];
 
-  const data = rows.reverse().map((r) => ({
-    date: r.draw_date,
-    period: r.period,
-    numbers: getAllNumbers(r),
-    extra: r.extra,
-    sum: getAllNumbers(r).reduce((a, b) => a + b, 0),
-    evenCount: getAllNumbers(r).filter((n) => n % 2 === 0).length,
-  }));
+  const data = rows.reverse().map((r) => {
+    const s = r.result_4d.padStart(4, "0");
+    const digits = [parseInt(s[0]!), parseInt(s[1]!), parseInt(s[2]!), parseInt(s[3]!)];
+    return {
+      date: r.draw_date,
+      result_4d: r.result_4d,
+      result_2d: r.result_2d,
+      digitSum: digits.reduce((a, b) => a + b, 0),
+      ekor: digits[3],
+      kepala: digits[2],
+    };
+  });
 
   res.json({ data });
 });

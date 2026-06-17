@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
 import path from "path";
-import fs from "fs";
 
 const dbPath = path.resolve(process.cwd(), "result.db");
 
@@ -11,69 +10,80 @@ db.pragma("foreign_keys = ON");
 
 export function initDb() {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS results (
+    CREATE TABLE IF NOT EXISTS hk4d_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      draw_date TEXT NOT NULL,
-      period TEXT,
-      n1 INTEGER NOT NULL,
-      n2 INTEGER NOT NULL,
-      n3 INTEGER NOT NULL,
-      n4 INTEGER NOT NULL,
-      n5 INTEGER NOT NULL,
-      n6 INTEGER NOT NULL,
-      extra INTEGER,
+      draw_date TEXT NOT NULL UNIQUE,
+      result_4d TEXT NOT NULL,
+      result_3d TEXT NOT NULL,
+      result_2d TEXT NOT NULL,
       source TEXT DEFAULT 'manual',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE INDEX IF NOT EXISTS idx_results_draw_date ON results(draw_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_hk4d_draw_date ON hk4d_results(draw_date DESC);
+
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fetched_at TEXT DEFAULT (datetime('now')),
+      added INTEGER DEFAULT 0,
+      skipped INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'ok',
+      message TEXT
+    );
   `);
 
-  const count = (db.prepare("SELECT COUNT(*) as c FROM results").get() as { c: number }).c;
+  const count = (db.prepare("SELECT COUNT(*) as c FROM hk4d_results").get() as { c: number }).c;
   if (count === 0) {
     seedData();
   }
 }
 
+export function derive4d(r4d: string): { r3d: string; r2d: string } {
+  const s = r4d.padStart(4, "0");
+  return { r3d: s.slice(1), r2d: s.slice(2) };
+}
+
 function seedData() {
-  const draws = generateHistoricalDraws();
+  const draws: { date: string; result: string }[] = [
+    { date: "2026-06-16", result: "1064" },
+    { date: "2026-06-15", result: "9907" },
+    { date: "2026-06-14", result: "0365" },
+    { date: "2026-06-13", result: "3372" },
+    { date: "2026-06-12", result: "9815" },
+    { date: "2026-06-11", result: "6253" },
+    { date: "2026-06-10", result: "5537" },
+    { date: "2026-06-09", result: "1521" },
+    { date: "2026-06-08", result: "0933" },
+    { date: "2026-06-07", result: "1893" },
+    { date: "2026-06-06", result: "7021" },
+    { date: "2026-06-05", result: "0827" },
+    { date: "2026-06-04", result: "9114" },
+    { date: "2026-06-03", result: "1093" },
+    { date: "2026-06-02", result: "5802" },
+    { date: "2026-06-01", result: "0735" },
+    { date: "2026-05-31", result: "6516" },
+    { date: "2026-05-30", result: "0091" },
+    { date: "2026-05-29", result: "6327" },
+    { date: "2026-05-28", result: "3268" },
+    { date: "2026-05-27", result: "1679" },
+    { date: "2026-05-26", result: "9138" },
+    { date: "2026-05-25", result: "5909" },
+    { date: "2026-05-24", result: "3754" },
+    { date: "2026-05-23", result: "6284" },
+    { date: "2026-05-22", result: "5767" },
+    { date: "2026-05-21", result: "4915" },
+    { date: "2026-05-20", result: "6881" },
+  ];
+
   const insert = db.prepare(
-    `INSERT INTO results (draw_date, period, n1, n2, n3, n4, n5, n6, extra, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`
+    `INSERT OR IGNORE INTO hk4d_results (draw_date, result_4d, result_3d, result_2d, source)
+     VALUES (?, ?, ?, ?, 'seed')`
   );
-  const insertMany = db.transaction((rows: typeof draws) => {
-    for (const r of rows) {
-      insert.run(r.date, r.period, ...r.nums, r.extra);
+  const insertMany = db.transaction(() => {
+    for (const d of draws) {
+      const { r3d, r2d } = derive4d(d.result);
+      insert.run(d.date, d.result.padStart(4, "0"), r3d, r2d);
     }
   });
-  insertMany(draws);
-}
-
-function pickUnique(count: number, max: number): number[] {
-  const pool = Array.from({ length: max }, (_, i) => i + 1);
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
-  }
-  return pool.slice(0, count).sort((a, b) => a - b);
-}
-
-function generateHistoricalDraws() {
-  const draws: { date: string; period: string; nums: number[]; extra: number }[] = [];
-  const base = new Date("2024-01-02");
-  let drawNum = 24001;
-
-  for (let i = 0; i < 120; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i * 3);
-    const dateStr = d.toISOString().split("T")[0]!;
-    const all = pickUnique(7, 49);
-    draws.push({
-      date: dateStr,
-      period: String(drawNum + i),
-      nums: all.slice(0, 6),
-      extra: all[6]!,
-    });
-  }
-  return draws.reverse();
+  insertMany();
 }

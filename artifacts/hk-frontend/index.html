@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HK Toto Pro — Prediksi & Analisis</title>
-  <meta name="description" content="Analisis statistik & prediksi HK Toto (Mark Six) berbasis data historis." />
+  <title>HK Toto Pro — 4D 3D 2D</title>
+  <meta name="description" content="Prediksi & Analisis HK 4D 3D 2D berdasarkan data historis." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
+<!-- ── NAVBAR (Desktop) ── -->
 <nav class="navbar">
   <div class="navbar-brand">
     <div class="logo-icon">🎰</div>
@@ -19,201 +20,247 @@
     <span class="badge-live">Live</span>
   </div>
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showPage('dashboard')">Dashboard</button>
-    <button class="nav-tab" onclick="showPage('prediction')">Prediksi</button>
-    <button class="nav-tab" onclick="showPage('heatmap')">Heat Map</button>
-    <button class="nav-tab" onclick="showPage('history')">History</button>
-    <button class="nav-tab" onclick="showPage('input')">Input Result</button>
+    <button class="nav-tab active" onclick="showPage('dashboard')">📊 Dashboard</button>
+    <button class="nav-tab" onclick="showPage('prediksi')">🎯 Prediksi</button>
+    <button class="nav-tab" onclick="showPage('analisis')">🔬 Analisis</button>
+    <button class="nav-tab" onclick="showPage('history')">📋 History</button>
+    <button class="nav-tab" onclick="showPage('input')">➕ Input</button>
   </div>
-  <button class="sync-nav-btn" id="sync-nav-btn" onclick="runSync()" title="Sync data dari HKJC">
-    <span id="sync-nav-icon">🔄</span>
-    <span id="sync-nav-label">Sync</span>
-  </button>
+  <div style="font-size:12px;color:var(--text-muted);padding:4px 10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+    HK 4D · 3D · 2D
+  </div>
 </nav>
 
-<div class="container">
+<!-- ── MOBILE HEADER ── -->
+<div class="mobile-header">
+  <div class="navbar-brand">
+    <div class="logo-icon">🎰</div>
+    <span>HK Toto Pro</span>
+    <span class="badge-live">Live</span>
+  </div>
+  <div id="mobile-page-title" style="font-size:13px;color:var(--text-muted);">Dashboard</div>
+</div>
+
+<div class="container" id="main-container">
 
   <!-- ===== DASHBOARD ===== -->
   <div id="page-dashboard" class="page active">
-    <div class="sync-card section-gap" id="sync-card">
-      <div class="sync-status-row">
-        <div class="sync-dot empty" id="sync-dot"></div>
-        <div class="sync-info">
-          Auto-sync: <strong>setiap 6 jam</strong>
-          &nbsp;·&nbsp; Terakhir: <strong id="sync-last-time">memuat...</strong>
-          &nbsp;·&nbsp; Data auto: <strong id="sync-total-auto">—</strong> draw
-          &nbsp;·&nbsp; Status: <strong id="sync-last-status">—</strong>
-        </div>
+
+    <!-- Latest Result Hero -->
+    <div class="result-hero section-gap">
+      <div class="result-hero-label">🎯 Hasil Terbaru</div>
+      <div class="result-hero-date" id="hero-date">memuat...</div>
+      <div class="result-4d-display" id="hero-4d">
+        <div class="digit-box skeleton"></div>
+        <div class="digit-box skeleton"></div>
+        <div class="digit-box skeleton"></div>
+        <div class="digit-box skeleton"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="sync-result-toast" id="sync-result-toast"></div>
-        <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;" onclick="runSync()" id="sync-manual-btn">
-          🔄 Sync Sekarang
-        </button>
+      <div class="result-derived-row" id="hero-derived">
+        <div class="derived-chip loading-chip"></div>
+        <div class="derived-chip loading-chip"></div>
+      </div>
+      <div class="result-detail-row" id="hero-detail"></div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid-4 section-gap">
+      <div class="stat-card">
+        <div class="stat-label">Total Draw</div>
+        <div class="stat-value text-accent" id="stat-total">—</div>
+        <div class="stat-sub">data tersimpan</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ekor Panas</div>
+        <div class="stat-value text-red" id="stat-hot-ekor">—</div>
+        <div class="stat-sub" id="stat-hot-ekor-sub">digit terakhir hot</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">2D Terkini</div>
+        <div class="stat-value text-green mono" id="stat-2d-last">—</div>
+        <div class="stat-sub">draw terakhir</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">AS Terakhir</div>
+        <div class="stat-value text-blue mono" id="stat-as-last">—</div>
+        <div class="stat-sub">2 digit pertama</div>
       </div>
     </div>
 
-    <div class="section-gap">
-      <div class="grid-4">
-        <div class="stat-card">
-          <div class="stat-label">Total Draw</div>
-          <div class="stat-value text-accent" id="stat-total">—</div>
-          <div class="stat-sub">sejak data pertama</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Angka Terpanas</div>
-          <div class="stat-value text-red" id="stat-hotnum">—</div>
-          <div class="stat-sub" id="stat-hotfreq">frekuensi tertinggi</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Angka Terdingin</div>
-          <div class="stat-value text-blue" id="stat-coldnum">—</div>
-          <div class="stat-sub" id="stat-coldfreq">frekuensi terendah</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Draw Terakhir</div>
-          <div class="stat-value text-green" id="stat-lastdate" style="font-size:1.1rem">—</div>
-          <div class="stat-sub" id="stat-period">periode —</div>
-        </div>
-      </div>
-    </div>
-
+    <!-- Quick 2D Predict + Recent Results -->
     <div class="grid-2 section-gap">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">🎯 Hasil Draw Terakhir</span>
-          <span class="text-xs text-muted" id="last-draw-date">—</span>
+          <span class="card-title">⚡ Quick Predict 2D</span>
+          <button class="btn btn-xs btn-ghost" onclick="showPage('prediksi')">Lihat Semua →</button>
         </div>
-        <div id="last-draw-balls" class="balls-row" style="justify-content:center; margin:1rem 0;">
+        <div id="quick-predict-2d" class="predict-chips-wrap">
           <div class="loading-spinner"></div>
         </div>
-        <div style="text-align:center; margin-top:0.5rem;" id="last-draw-extra"></div>
+        <button class="btn btn-primary btn-full mt-1" onclick="refreshQuickPredict()">🔄 Refresh</button>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">⚡ Quick Predict</span>
-          <button class="btn btn-ghost text-sm" onclick="showPage('prediction')" style="padding:5px 12px; font-size:12px;">Lihat Detail →</button>
+          <span class="card-title">🕐 5 Draw Terakhir</span>
         </div>
-        <div id="quick-predict-balls" class="balls-row" style="justify-content:center; margin:1rem 0;">
+        <div id="recent-results-list" class="recent-list">
           <div class="loading-spinner"></div>
         </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:0.5rem;" onclick="refreshQuickPredict()">
-          🔄 Generate Ulang
-        </button>
       </div>
     </div>
 
+    <!-- Hot 2D + Overdue 2D -->
     <div class="grid-2 section-gap">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">🔥 Top 10 Angka Panas</span>
-          <span class="tag tag-hot">Hot</span>
+          <span class="card-title">🔥 Hot 2D</span>
+          <span class="tag tag-hot">Sering Muncul</span>
         </div>
-        <div id="hot-list" class="chart-bar-wrap"></div>
+        <div id="hot-2d-list" class="chip-grid"></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <span class="card-title">❄️ Top 10 Angka Dingin</span>
-          <span class="tag tag-cold">Cold</span>
+          <span class="card-title">🧊 Overdue 2D</span>
+          <span class="tag tag-cold">Lama Absen</span>
         </div>
-        <div id="cold-list" class="chart-bar-wrap"></div>
+        <div id="overdue-2d-list" class="chip-grid"></div>
       </div>
     </div>
 
-    <div class="card section-gap">
-      <div class="card-header">
-        <span class="card-title">⏳ Angka Overdue (Tertunggak)</span>
-        <span class="tag tag-overdue">Overdue</span>
-      </div>
-      <div id="overdue-list" class="balls-row" style="flex-wrap:wrap; gap:10px;"></div>
-    </div>
   </div>
 
-  <!-- ===== PREDICTION ===== -->
-  <div id="page-prediction" class="page">
-    <div class="grid-2 section-gap" style="align-items:start;">
-      <div>
-        <div class="prediction-box section-gap">
-          <div class="prediction-title">✨ Prediksi HK Toto</div>
-          <div class="mode-selector">
-            <button class="mode-btn active" data-mode="balanced" onclick="setMode(this,'balanced')">⚖️ Balanced</button>
-            <button class="mode-btn" data-mode="hot" onclick="setMode(this,'hot')">🔥 Hot</button>
-            <button class="mode-btn" data-mode="cold" onclick="setMode(this,'cold')">❄️ Cold</button>
-          </div>
-          <div id="predict-balls" class="balls-row" style="justify-content:center; margin:1rem 0; min-height:60px;">
-            <div class="loading-spinner"></div>
-          </div>
-          <div id="predict-extra-row" style="margin-bottom:1rem;"></div>
-          <div class="confidence-bar">
-            <div class="confidence-fill" id="confidence-fill" style="width:0%"></div>
-          </div>
-          <div class="confidence-label">
-            Confidence Score: <strong id="confidence-val">—</strong>%
-            &nbsp;·&nbsp; Basis: <strong id="draws-analyzed">—</strong> draw
-          </div>
-          <button class="btn btn-primary" style="width:100%; margin-top:1.25rem;" onclick="loadPrediction()">
-            🎲 Generate Prediksi Baru
-          </button>
-        </div>
+  <!-- ===== PREDIKSI ===== -->
+  <div id="page-prediksi" class="page">
 
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">📊 Statistik Draw Terakhir</span>
-          </div>
-          <div id="hist-chart" style="padding:0.5rem 0;"></div>
-        </div>
+    <!-- Type Selector -->
+    <div class="type-selector-wrap section-gap">
+      <div class="type-selector">
+        <button class="type-btn active" onclick="setPredictType(this,'4d')">🎲 4D</button>
+        <button class="type-btn" onclick="setPredictType(this,'3d')">🎯 3D</button>
+        <button class="type-btn" onclick="setPredictType(this,'2d')">⚡ 2D</button>
       </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">🔍 Analisis Angka Terpilih</span>
-        </div>
-        <div id="explain-list" class="explain-list">
-          <div class="empty-state">
-            <div class="icon">🎯</div>
-            <div>Generate prediksi untuk melihat analisis</div>
-          </div>
-        </div>
+      <div class="mode-selector">
+        <button class="mode-btn active" onclick="setPredictMode(this,'hot')">🔥 Hot</button>
+        <button class="mode-btn" onclick="setPredictMode(this,'cold')">🧊 Cold</button>
+        <button class="mode-btn" onclick="setPredictMode(this,'balanced')">⚖️ Balanced</button>
       </div>
     </div>
-  </div>
 
-  <!-- ===== HEATMAP ===== -->
-  <div id="page-heatmap" class="page">
+    <!-- Predictions -->
     <div class="card section-gap">
       <div class="card-header">
-        <span class="card-title">🗺️ Heat Map Angka 1–49</span>
-        <div style="display:flex; gap:10px; font-size:11px; color:var(--text-muted); align-items:center;">
-          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;background:#3a0e0e;border-radius:3px;display:inline-block;"></span> Sangat Panas</span>
-          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;background:#1a2a4a;border-radius:3px;display:inline-block;"></span> Dingin</span>
-          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;background:var(--surface2);border-radius:3px;display:inline-block;"></span> Normal</span>
-        </div>
+        <span class="card-title" id="predict-card-title">🎲 Prediksi 4D — Mode Hot</span>
+        <span class="text-xs text-muted" id="predict-draws-analyzed">— draw dianalisis</span>
       </div>
-      <div id="num-grid" class="num-grid"></div>
+      <div id="predict-results" class="predict-list">
+        <div class="loading-spinner"></div>
+      </div>
+      <button class="btn btn-primary btn-full mt-1" onclick="loadPredictions()">🔄 Generate Ulang</button>
     </div>
 
+    <!-- How it works -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📖 Cara Kerja Analisis</span>
+      </div>
+      <div class="method-list">
+        <div class="method-item">
+          <div class="method-icon">🔥</div>
+          <div>
+            <div class="method-title">Hot Pick</div>
+            <div class="method-desc">Prioritaskan digit/angka yang muncul paling sering dan paling baru</div>
+          </div>
+        </div>
+        <div class="method-item">
+          <div class="method-icon">🧊</div>
+          <div>
+            <div class="method-title">Cold Pick</div>
+            <div class="method-desc">Cari angka yang lama tidak muncul (overdue) — kemungkinan akan keluar</div>
+          </div>
+        </div>
+        <div class="method-item">
+          <div class="method-icon">⚖️</div>
+          <div>
+            <div class="method-title">Balanced</div>
+            <div class="method-desc">Kombinasi frekuensi, recency, dan pola overdue secara proporsional</div>
+          </div>
+        </div>
+        <div class="method-item">
+          <div class="method-icon">📊</div>
+          <div>
+            <div class="method-title">Positional Analysis</div>
+            <div class="method-desc">Setiap posisi digit (P1–P4) dianalisis secara independen</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== ANALISIS ===== -->
+  <div id="page-analisis" class="page">
+
+    <!-- Positional Heat Map -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🗺️ Analisis Per Posisi (P1–P4)</span>
+        <div class="legend-row">
+          <span class="legend-dot hot"></span><span class="text-xs text-muted">Hot</span>
+          <span class="legend-dot cold"></span><span class="text-xs text-muted">Cold</span>
+        </div>
+      </div>
+      <div class="pos-labels-row">
+        <div class="pos-label">P1 (AS)</div>
+        <div class="pos-label">P2 (KOP)</div>
+        <div class="pos-label">P3 (KEP)</div>
+        <div class="pos-label">P4 (EKR)</div>
+      </div>
+      <div id="pos-heatmap" class="pos-heatmap">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+
+    <!-- KEPALA & EKOR Stats -->
     <div class="grid-2 section-gap">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">📈 Distribusi Frekuensi</span>
+          <span class="card-title">🎯 KEPALA (Digit ke-3)</span>
         </div>
-        <div id="freq-dist" class="chart-bar-wrap"></div>
+        <div id="kepala-chart" class="digit-freq-chart"></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <span class="card-title">🔢 Tabel Frekuensi Lengkap</span>
+          <span class="card-title">🎯 EKOR (Digit ke-4)</span>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Angka</th><th>Frekuensi</th><th>Persen</th><th>Status</th><th>Terakhir</th></tr>
-            </thead>
-            <tbody id="freq-table"></tbody>
-          </table>
-        </div>
+        <div id="ekor-chart" class="digit-freq-chart"></div>
       </div>
     </div>
+
+    <!-- 2D Frequency Table -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🔢 Frekuensi 2D — Top 20</span>
+        <span class="tag tag-hot">Semua Data</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>2D</th><th>Muncul</th><th>Terakhir</th><th>Status</th></tr>
+          </thead>
+          <tbody id="freq-2d-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 3D Frequency -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🔢 Frekuensi 3D — Top 15</span>
+      </div>
+      <div id="freq-3d-list" class="chip-grid-lg"></div>
+    </div>
+
   </div>
 
   <!-- ===== HISTORY ===== -->
@@ -221,84 +268,113 @@
     <div class="card section-gap">
       <div class="card-header">
         <span class="card-title">📋 Riwayat Draw HK</span>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <span class="text-xs text-muted" id="history-count">— hasil</span>
-        </div>
+        <span class="text-xs text-muted" id="history-count">—</span>
       </div>
-      <div class="table-wrap">
+
+      <!-- Mobile result list -->
+      <div id="history-list-mobile" class="history-mobile-list"></div>
+
+      <!-- Desktop table -->
+      <div class="table-wrap desktop-only">
         <table>
           <thead>
-            <tr><th>#</th><th>Periode</th><th>Tanggal</th><th>Angka</th><th>Extra</th><th>Sumber</th><th></th></tr>
+            <tr><th>#</th><th>Tanggal</th><th>4D</th><th>3D</th><th>2D</th><th>AS</th><th>KEPALA</th><th>EKOR</th><th>Sumber</th><th></th></tr>
           </thead>
           <tbody id="history-table"></tbody>
         </table>
       </div>
+
       <div class="pager">
-        <span class="pager-info" id="pager-info">— dari —</span>
-        <button class="btn btn-ghost" id="pager-prev" onclick="changePage(-1)" style="padding:5px 12px;font-size:12px;">← Prev</button>
-        <button class="btn btn-ghost" id="pager-next" onclick="changePage(1)" style="padding:5px 12px;font-size:12px;">Next →</button>
+        <span class="pager-info" id="pager-info">—</span>
+        <button class="btn btn-ghost btn-sm" id="pager-prev" onclick="changePage(-1)">← Prev</button>
+        <button class="btn btn-ghost btn-sm" id="pager-next" onclick="changePage(1)">Next →</button>
       </div>
     </div>
   </div>
 
   <!-- ===== INPUT ===== -->
   <div id="page-input" class="page">
-    <div class="grid-2 section-gap" style="align-items:start;">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">➕ Input Result Baru</span>
-        </div>
-        <form id="add-form" onsubmit="submitResult(event)">
-          <div class="form-group">
-            <label class="form-label">Tanggal Draw</label>
-            <input type="date" class="form-input" id="f-date" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Nomor Periode (opsional)</label>
-            <input type="text" class="form-input" id="f-period" placeholder="cth: 24120" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">6 Angka Utama (1–49)</label>
-            <div class="nums-input-row">
-              <input type="number" class="form-input" id="f-n1" min="1" max="49" placeholder="N1" required />
-              <input type="number" class="form-input" id="f-n2" min="1" max="49" placeholder="N2" required />
-              <input type="number" class="form-input" id="f-n3" min="1" max="49" placeholder="N3" required />
-              <input type="number" class="form-input" id="f-n4" min="1" max="49" placeholder="N4" required />
-              <input type="number" class="form-input" id="f-n5" min="1" max="49" placeholder="N5" required />
-              <input type="number" class="form-input" id="f-n6" min="1" max="49" placeholder="N6" required />
-              <div></div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Angka Extra/Bonus (opsional)</label>
-            <input type="number" class="form-input" id="f-extra" min="1" max="49" placeholder="Extra" style="width:120px;" />
-          </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">💾 Simpan Result</button>
-        </form>
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">➕ Input Result Baru</span>
       </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">ℹ️ Panduan Input</span>
+      <form id="add-form" onsubmit="submitResult(event)">
+        <div class="form-group">
+          <label class="form-label">Tanggal Draw</label>
+          <input type="date" class="form-input" id="f-date" required />
         </div>
-        <div style="font-size:13px; color:var(--text-dim); line-height:1.8;">
-          <p style="margin-bottom:0.75rem;">Masukkan hasil draw resmi HK Toto untuk meningkatkan akurasi prediksi.</p>
-          <ul style="padding-left:1.2rem; color:var(--text-muted);">
-            <li>6 angka utama harus unik</li>
-            <li>Semua angka antara 1 sampai 49</li>
-            <li>Angka extra tidak boleh sama dengan angka utama</li>
-            <li>Urutan angka tidak perlu terurut</li>
-            <li>Sumber data resmi: hklotto.com</li>
-          </ul>
-          <div style="margin-top:1rem; padding:0.75rem; background:var(--surface2); border-radius:8px; border-left:3px solid var(--accent);">
-            <div style="font-size:11px; font-weight:700; color:var(--accent); margin-bottom:4px;">DISCLAIMER</div>
-            <div style="font-size:11px; color:var(--text-muted);">Prediksi bersifat statistik dan edukatif. Tidak menjamin kemenangan. Gunakan dengan bijak.</div>
+        <div class="form-group">
+          <label class="form-label">Nomor 4D (0000–9999)</label>
+          <input type="text" class="form-input mono large-input" id="f-4d"
+            maxlength="4" placeholder="cth: 1064" pattern="\d{1,4}" required
+            oninput="previewDerived()" />
+          <div class="derived-preview" id="derived-preview" style="display:none;">
+            <span class="derived-chip sm">3D: <strong id="prev-3d">—</strong></span>
+            <span class="derived-chip sm">2D: <strong id="prev-2d">—</strong></span>
+            <span class="derived-chip sm">KEP: <strong id="prev-kep">—</strong></span>
+            <span class="derived-chip sm">EKR: <strong id="prev-ekr">—</strong></span>
           </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" style="margin-top:0.5rem;">💾 Simpan Result</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">ℹ️ Panduan</span>
+      </div>
+      <div class="guide-text">
+        <p>Masukkan nomor 4D resmi dari hasil draw HK. Nomor 3D, 2D, KEPALA, dan EKOR akan dihitung otomatis.</p>
+        <div class="guide-example">
+          <div class="guide-ex-row">
+            <span class="label">4D:</span><span class="mono val">1064</span>
+          </div>
+          <div class="guide-ex-row">
+            <span class="label">3D (belakang):</span><span class="mono val">064</span>
+          </div>
+          <div class="guide-ex-row">
+            <span class="label">2D (2 belakang):</span><span class="mono val">64</span>
+          </div>
+          <div class="guide-ex-row">
+            <span class="label">KEPALA (digit ke-3):</span><span class="mono val">6</span>
+          </div>
+          <div class="guide-ex-row">
+            <span class="label">EKOR (digit ke-4):</span><span class="mono val">4</span>
+          </div>
+        </div>
+        <div class="disclaimer-box">
+          <strong>DISCLAIMER</strong>
+          <p>Prediksi bersifat statistik & edukatif. Tidak ada jaminan kemenangan. Gunakan dengan bijak.</p>
         </div>
       </div>
     </div>
   </div>
 
 </div>
+
+<!-- ── BOTTOM NAV (Mobile) ── -->
+<nav class="bottom-nav">
+  <button class="bottom-tab active" onclick="showPage('dashboard')">
+    <span class="bottom-icon">📊</span>
+    <span class="bottom-label">Dashboard</span>
+  </button>
+  <button class="bottom-tab" onclick="showPage('prediksi')">
+    <span class="bottom-icon">🎯</span>
+    <span class="bottom-label">Prediksi</span>
+  </button>
+  <button class="bottom-tab" onclick="showPage('analisis')">
+    <span class="bottom-icon">🔬</span>
+    <span class="bottom-label">Analisis</span>
+  </button>
+  <button class="bottom-tab" onclick="showPage('history')">
+    <span class="bottom-icon">📋</span>
+    <span class="bottom-label">History</span>
+  </button>
+  <button class="bottom-tab" onclick="showPage('input')">
+    <span class="bottom-icon">➕</span>
+    <span class="bottom-label">Input</span>
+  </button>
+</nav>
 
 <div class="toast-container" id="toast-container"></div>
 
