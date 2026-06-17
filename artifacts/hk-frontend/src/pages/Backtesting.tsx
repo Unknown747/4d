@@ -37,9 +37,6 @@ export default function Backtesting() {
     </div>
   );
 
-  const overallHit = data.winrate['2d']?.hits ?? 0;
-  const overallTotal = data.winrate['2d']?.total ?? 1;
-
   return (
     <div className="space-y-4">
       <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-xl p-5 text-center">

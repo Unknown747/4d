@@ -65,7 +65,9 @@ router.post("/results", (req, res): void => {
           WHERE id = ?
         `).run(r, r3d, r2d, hit4d, hit3d, hit2d, rek.id);
       }
-    } catch { /* jangan gagalkan insert utama */ }
+    } catch (rekErr) {
+      console.error("[win-rate] Gagal update rekomendasi_history:", rekErr);
+    }
 
     res.status(201).json(row);
   } catch (err: any) {

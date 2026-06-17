@@ -34,6 +34,9 @@ function RekomendasiHariIni() {
     staleTime: 120_000,
   });
 
+  const unique3D = [...new Set(data?.predictions.map(p => p.num3d) ?? [])];
+  const unique2D = [...new Set(data?.predictions.map(p => p.num2d) ?? [])];
+
   function handleCopy() {
     if (!data) return;
     const lines = [
@@ -45,6 +48,9 @@ function RekomendasiHariIni() {
       ...data.predictions.map(p =>
         `${String(p.rank).padStart(2,'0')}  | ${p.num4d} | ${p.num3d} | ${p.num2d}`
       ),
+      '',
+      `3D Pasang: ${unique3D.join(' · ')}`,
+      `2D Pasang: ${unique2D.join(' · ')}`,
       '',
       `Sinyal: Shio (${data.signals.shioBonus.join(', ')}) · Ekor ikut (${data.signals.ekorBonus.join(',')})`,
     ].join('\n');
@@ -158,8 +164,41 @@ function RekomendasiHariIni() {
         </table>
       </div>
 
+      {/* Unique 3D & 2D untuk dipasang */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+        {/* 3D Pasang */}
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">🎲 3D Pasang</span>
+            <span className="text-xs text-slate-500">{unique3D.length} angka</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {unique3D.map(n => (
+              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-amber-900/30 border border-amber-700/40 rounded text-amber-300">
+                {n}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* 2D Pasang */}
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">🎲 2D Pasang</span>
+            <span className="text-xs text-slate-500">{unique2D.length} angka</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {unique2D.map(n => (
+              <span key={n} className="font-mono font-bold text-sm px-2 py-0.5 bg-green-900/30 border border-green-700/40 rounded text-green-300">
+                {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="text-xs text-slate-600 mt-3 text-center">
-        3D dan 2D otomatis dari 4D · Diperbarui setiap ada data baru
+        3D &amp; 2D diekstrak dari semua 10 prediksi 4D · Diperbarui setiap ada data baru
       </div>
     </div>
   );
