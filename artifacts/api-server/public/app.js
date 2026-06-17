@@ -45,15 +45,15 @@ function toast(msg, type = 'success') {
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    if (t.textContent.toLowerCase().includes(id === 'dashboard' ? 'dash' :
-        id === 'prediction' ? 'pred' : id === 'heatmap' ? 'heat' :
-        id === 'history' ? 'hist' : 'input')) t.classList.add('active');
-  });
+  const pageEl = document.getElementById('page-' + id);
+  if (pageEl) pageEl.classList.add('active');
+  document.querySelectorAll(`.nav-tab[data-page="${id}"]`).forEach(t => t.classList.add('active'));
   if (id === 'heatmap' && statsCache) renderHeatmap(statsCache);
   if (id === 'history') loadHistory();
   if (id === 'prediction') loadPrediction();
+  if (id === 'shio') loadShio();
+  if (id === 'pola') loadPola();
+  if (id === 'fix') loadAngkaFix();
 }
 
 // ─── Ball rendering ─────────────────────────────────────────────────────────
@@ -449,6 +449,226 @@ async function runSync() {
     btn.disabled = false;
     btn.textContent = '🔄 Sync Sekarang';
     navBtn.classList.remove('syncing');
+  }
+}
+
+// ─── Angka Fix ────────────────────────────────────────────────────────────────
+
+async function loadAngkaFix() {
+  const types = ['4d', '3d', '2d', 'bb'];
+  types.forEach(t => {
+    const numEl = document.getElementById(`fix-${t}-number`);
+    if (numEl) numEl.innerHTML = '<div class="loading-spinner" style="margin:0.5rem auto;width:24px;height:24px;border-width:2px;"></div>';
+    const confEl = document.getElementById(`fix-${t}-conf`);
+    if (confEl) confEl.style.width = '0%';
+  });
+
+  try {
+    const data = await api('/angka-fix');
+    const fix = data.fix;
+    const signals = data.signals;
+
+    types.forEach(t => {
+      const entry = fix[t];
+      if (!entry) return;
+      const numEl = document.getElementById(`fix-${t}-number`);
+      const shioEl = document.getElementById(`fix-${t}-shio`);
+      const confEl = document.getElementById(`fix-${t}-conf`);
+      const labelEl = document.getElementById(`fix-${t}-conf-label`);
+      if (numEl) numEl.textContent = entry.number;
+      if (shioEl) shioEl.textContent = `${entry.shio?.emoji ?? ''} ${entry.shio?.name ?? ''}`;
+      if (confEl) setTimeout(() => { confEl.style.width = entry.confidence + '%'; }, 60);
+      if (labelEl) labelEl.textContent = `Confidence ${entry.confidence}%`;
+    });
+
+    const sigEl = document.getElementById('fix-signals');
+    if (sigEl) {
+      sigEl.innerHTML = `
+        <div class="signal-row">
+          <div class="signal-icon">🐉</div>
+          <div class="signal-body">
+            <div class="signal-label">Shio Bonus (Paling Aktif)</div>
+            <div class="signal-value">${signals.shioBonus.join(' · ')}</div>
+          </div>
+        </div>
+        <div class="signal-row">
+          <div class="signal-icon">🔚</div>
+          <div class="signal-body">
+            <div class="signal-label">Ekor Bonus (Pola Ikutan)</div>
+            <div class="signal-value">Ekor ${signals.ekorBonus.join(', ')}</div>
+          </div>
+        </div>
+        <div class="signal-row">
+          <div class="signal-icon">📊</div>
+          <div class="signal-body">
+            <div class="signal-label">Basis Analisis</div>
+            <div class="signal-value">${signals.totalDraws} draw terakhir</div>
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {
+    toast('Gagal memuat Angka Fix: ' + e.message, 'error');
+    ['4d','3d','2d','bb'].forEach(t => {
+      const el = document.getElementById(`fix-${t}-number`);
+      if (el) el.textContent = '??';
+    });
+  }
+}
+
+// ─── Shio ─────────────────────────────────────────────────────────────────────
+
+async function loadShio() {
+  document.getElementById('shio-current').innerHTML = '<div class="loading-spinner"></div>';
+  document.getElementById('shio-predicted').innerHTML = '<div class="loading-spinner"></div>';
+  document.getElementById('shio-all').innerHTML = '<div class="loading-spinner"></div>';
+  document.getElementById('shio-2d-pool').innerHTML = '<div class="loading-spinner"></div>';
+
+  try {
+    const data = await api('/shio');
+    document.getElementById('shio-total-draws').textContent = `${data.totalDraws} draw dianalisis`;
+
+    // Current shio
+    const cur = data.currentShio;
+    document.getElementById('shio-current').innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:3rem;line-height:1;">${cur.emoji}</div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Shio Draw Terakhir (${escapeHtml(cur.date)})</div>
+          <div style="font-size:1.5rem;font-weight:700;">${escapeHtml(cur.name)}</div>
+          <div style="font-size:13px;color:var(--text-muted);">2D: <strong style="color:var(--accent);">${escapeHtml(cur.number)}</strong></div>
+        </div>
+      </div>
+    `;
+
+    // Predicted top 3
+    document.getElementById('shio-predicted').innerHTML = data.predictedShios.map((s, i) => `
+      <div class="shio-predict-row">
+        <div class="shio-rank">#${i + 1}</div>
+        <div class="shio-emoji-big">${escapeHtml(s.emoji)}</div>
+        <div class="shio-info">
+          <div class="shio-name">${escapeHtml(s.name)}</div>
+          <div class="shio-meta">Muncul ${s.count}x · ${s.lastIdx === 0 ? 'draw terbaru' : `${s.lastIdx} draw lalu`}</div>
+        </div>
+        <div class="shio-score-wrap">
+          <div class="shio-score-bar-outer">
+            <div class="shio-score-bar-fill" style="width:${Math.round(s.score * 400)}%"></div>
+          </div>
+          <div class="shio-pct">${s.pct}%</div>
+        </div>
+        <span class="tag ${i === 0 ? 'tag-hot' : i === 1 ? 'tag-overdue' : 'tag-cold'}">${i === 0 ? 'Top Pick' : i === 1 ? '2nd' : '3rd'}</span>
+      </div>
+    `).join('');
+
+    // All 12 shios
+    const maxScore = Math.max(...data.shioStats.map(s => s.score));
+    document.getElementById('shio-all').innerHTML = data.shioStats.map(s => {
+      const isPredicted = data.predictedShios.some(p => p.name === s.name);
+      return `
+        <div class="shio-row ${isPredicted ? 'shio-row-active' : ''}">
+          <div class="shio-emoji">${escapeHtml(s.emoji)}</div>
+          <div class="shio-row-name">${escapeHtml(s.name)}</div>
+          <div style="flex:1;">
+            <div class="shio-score-bar-outer">
+              <div class="shio-score-bar-fill" style="width:${maxScore > 0 ? Math.round((s.score/maxScore)*100) : 0}%;${isPredicted ? 'background:var(--accent);' : ''}"></div>
+            </div>
+          </div>
+          <div class="shio-pct" style="${isPredicted ? 'color:var(--accent);' : ''}">${s.pct}%</div>
+          <div style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:right;">${s.lastIdx === 0 ? '🔥 Baru' : `${s.lastIdx} lalu`}</div>
+        </div>
+      `;
+    }).join('');
+
+    // 2D pool from predicted shios
+    const pool2D = [];
+    data.predictedShios.forEach(s => {
+      s.nums.forEach(n => pool2D.push({ num: n, shio: s.name, emoji: s.emoji }));
+    });
+    pool2D.sort((a, b) => a.num.localeCompare(b.num));
+    document.getElementById('shio-2d-pool').innerHTML = pool2D.map(p => `
+      <div class="shio-chip" title="${escapeHtml(p.emoji)} ${escapeHtml(p.shio)}">
+        <div class="shio-chip-num">${escapeHtml(p.num)}</div>
+        <div class="shio-chip-label">${escapeHtml(p.emoji)}</div>
+      </div>
+    `).join('');
+
+  } catch (e) {
+    toast('Gagal memuat data Shio: ' + e.message, 'error');
+  }
+}
+
+// ─── Pola Ikutan ──────────────────────────────────────────────────────────────
+
+async function loadPola() {
+  ['pola-last-result','pola-ekor','pola-kepala','pola-2d-recommend'].forEach(id => {
+    document.getElementById(id).innerHTML = '<div class="loading-spinner"></div>';
+  });
+
+  try {
+    const data = await api('/pola-ikutan');
+    document.getElementById('pola-total-pairs').textContent = `${data.totalPairs} pasang draw dianalisis`;
+
+    // Last result
+    const s = data.lastResult;
+    document.getElementById('pola-last-result').innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div class="pola-digit-box pola-as">${escapeHtml(s[0])}</div>
+        <div class="pola-digit-box pola-kop">${escapeHtml(s[1])}</div>
+        <div class="pola-digit-box pola-kepala">${escapeHtml(s[2])}</div>
+        <div class="pola-digit-box pola-ekor-box">${escapeHtml(s[3])}</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">
+        <div>AS: <strong>${escapeHtml(s[0])}</strong> · KOP: <strong>${escapeHtml(s[1])}</strong></div>
+        <div>Kepala: <strong>${escapeHtml(s[2])}</strong> · Ekor: <strong>${escapeHtml(s[3])}</strong></div>
+      </div>
+    `;
+
+    document.getElementById('pola-last-ekor-label').textContent = `Setelah ekor: ${data.lastEkor}`;
+    document.getElementById('pola-last-kepala-label').textContent = `Setelah kepala: ${data.lastKepala}`;
+
+    function renderPatterns(patterns, total) {
+      if (!patterns || patterns.length === 0) {
+        return '<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:1.5rem;">Belum cukup data pola</div>';
+      }
+      const maxCount = patterns[0]?.count ?? 1;
+      return patterns.map((p, i) => `
+        <div class="pola-row ${i === 0 ? 'pola-row-top' : ''}">
+          <div class="pola-from-badge">${p.fromDigit}</div>
+          <div class="pola-arrow">→</div>
+          <div class="pola-to-badge">${p.toDigit}</div>
+          <div style="flex:1;">
+            <div class="shio-score-bar-outer">
+              <div class="shio-score-bar-fill" style="width:${maxCount > 0 ? Math.round((p.count/maxCount)*100) : 0}%;${i === 0 ? 'background:var(--accent);' : ''}"></div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);min-width:70px;text-align:right;">
+            <strong style="${i === 0 ? 'color:var(--accent);' : ''}">${p.count}×</strong> / ${p.total} draw
+          </div>
+          <span class="tag ${i === 0 ? 'tag-hot' : 'tag-cold'}" style="min-width:48px;text-align:center;">${Math.round(p.count/p.total*100)}%</span>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('pola-ekor').innerHTML = renderPatterns(data.ekorPatterns, data.totalPairs);
+    document.getElementById('pola-kepala').innerHTML = renderPatterns(data.kepalaPatterns, data.totalPairs);
+
+    // 2D recommendations: cross kepala × ekor from top patterns
+    const topEkors = (data.ekorPatterns || []).slice(0, 3).map(p => p.toDigit);
+    const topKepalas = (data.kepalaPatterns || []).slice(0, 3).map(p => p.toDigit);
+    const combos = [];
+    topKepalas.forEach(k => topEkors.forEach(e => combos.push(`${k}${e}`)));
+    const unique = [...new Set(combos)];
+    document.getElementById('pola-2d-recommend').innerHTML = unique.length > 0
+      ? unique.map(n => `
+          <div class="pola-2d-chip">
+            <div style="font-size:1.3rem;font-weight:800;">${escapeHtml(n)}</div>
+            <div style="font-size:10px;color:var(--text-muted);">kepala·ekor</div>
+          </div>
+        `).join('')
+      : '<div style="font-size:13px;color:var(--text-muted);">Belum cukup data</div>';
+
+  } catch (e) {
+    toast('Gagal memuat Pola Ikutan: ' + e.message, 'error');
   }
 }
 

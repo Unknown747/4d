@@ -17,11 +17,14 @@
     <span class="badge-live">Live</span>
   </div>
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showPage('dashboard')">Dashboard</button>
-    <button class="nav-tab" onclick="showPage('prediction')">Prediksi</button>
-    <button class="nav-tab" onclick="showPage('heatmap')">Heat Map</button>
-    <button class="nav-tab" onclick="showPage('history')">History</button>
-    <button class="nav-tab" onclick="showPage('input')">Input Result</button>
+    <button class="nav-tab active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
+    <button class="nav-tab" data-page="prediction" onclick="showPage('prediction')">Prediksi</button>
+    <button class="nav-tab" data-page="fix" onclick="showPage('fix')">🎯 Angka Fix</button>
+    <button class="nav-tab" data-page="shio" onclick="showPage('shio')">🐉 Shio</button>
+    <button class="nav-tab" data-page="pola" onclick="showPage('pola')">🔗 Pola Ikutan</button>
+    <button class="nav-tab" data-page="heatmap" onclick="showPage('heatmap')">Heat Map</button>
+    <button class="nav-tab" data-page="history" onclick="showPage('history')">History</button>
+    <button class="nav-tab" data-page="input" onclick="showPage('input')">Input Result</button>
   </div>
   <button class="sync-nav-btn" id="sync-nav-btn" onclick="runSync()" title="Sync data dari HKJC">
     <span id="sync-nav-icon">🔄</span>
@@ -211,6 +214,159 @@
             <tbody id="freq-table"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ANGKA FIX ===== -->
+  <div id="page-fix" class="page">
+    <div class="fix-hero section-gap">
+      <div class="fix-hero-title">🎯 Angka Fix — Prediksi Terkuat</div>
+      <div class="fix-hero-sub">Gabungan: Statistik × Shio × Pola Ikutan</div>
+      <div class="fix-grid" id="fix-grid">
+        <div class="fix-card" id="fix-4d-card">
+          <div class="fix-type">4D</div>
+          <div class="fix-number" id="fix-4d-number"><div class="loading-spinner" style="margin:0 auto;width:24px;height:24px;border-width:2px;"></div></div>
+          <div class="fix-shio" id="fix-4d-shio">—</div>
+          <div class="fix-conf-bar"><div class="fix-conf-fill" id="fix-4d-conf" style="width:0%"></div></div>
+          <div class="fix-conf-label" id="fix-4d-conf-label">—%</div>
+        </div>
+        <div class="fix-card" id="fix-3d-card">
+          <div class="fix-type">3D</div>
+          <div class="fix-number" id="fix-3d-number">—</div>
+          <div class="fix-shio" id="fix-3d-shio">—</div>
+          <div class="fix-conf-bar"><div class="fix-conf-fill" id="fix-3d-conf" style="width:0%"></div></div>
+          <div class="fix-conf-label" id="fix-3d-conf-label">—%</div>
+        </div>
+        <div class="fix-card" id="fix-2d-card">
+          <div class="fix-type">2D</div>
+          <div class="fix-number" id="fix-2d-number">—</div>
+          <div class="fix-shio" id="fix-2d-shio">—</div>
+          <div class="fix-conf-bar"><div class="fix-conf-fill" id="fix-2d-conf" style="width:0%"></div></div>
+          <div class="fix-conf-label" id="fix-2d-conf-label">—%</div>
+        </div>
+        <div class="fix-card fix-card-bb" id="fix-bb-card">
+          <div class="fix-type">BB</div>
+          <div class="fix-number" id="fix-bb-number">—</div>
+          <div class="fix-shio" id="fix-bb-shio">—</div>
+          <div class="fix-conf-bar"><div class="fix-conf-fill" id="fix-bb-conf" style="width:0%"></div></div>
+          <div class="fix-conf-label" id="fix-bb-conf-label">—%</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="loadAngkaFix()">🔄 Hitung Ulang</button>
+    </div>
+
+    <div class="grid-2 section-gap" style="align-items:start;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📡 Sinyal Aktif</span>
+        </div>
+        <div id="fix-signals">
+          <div class="empty-state" style="padding:2rem;"><div class="icon" style="font-size:2rem;">📡</div>Memuat sinyal...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📋 Keterangan</span>
+        </div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.9;">
+          <div style="margin-bottom:0.75rem;"><strong style="color:var(--text);">4D Fix</strong> — Kombinasi 4 digit terkuat dari seluruh posisi, diperkuat sinyal shio &amp; pola.</div>
+          <div style="margin-bottom:0.75rem;"><strong style="color:var(--text);">3D Fix</strong> — 3 digit terakhir (KOP+KEPALA+EKOR) dengan frekuensi tertinggi yang belum keluar 14 draw.</div>
+          <div style="margin-bottom:0.75rem;"><strong style="color:var(--text);">2D Fix</strong> — 2 digit terakhir (KEPALA+EKOR) dengan boost dari shio &amp; pola ekor ikutan.</div>
+          <div><strong style="color:var(--text);">BB</strong> — Sama dengan 4D Fix, digunakan untuk taruhan Bolak-Balik.</div>
+          <div style="margin-top:1rem;padding:0.75rem;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent);font-size:11px;">
+            <strong style="color:var(--accent);">DISCLAIMER</strong><br>Prediksi bersifat statistik dan edukatif. Tidak menjamin kemenangan.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SHIO ===== -->
+  <div id="page-shio" class="page">
+    <div class="grid-2 section-gap" style="align-items:start;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔮 Shio Terprediksi</span>
+          <span class="text-xs text-muted" id="shio-total-draws">— draw dianalisis</span>
+        </div>
+        <div id="shio-current" style="margin-bottom:1.25rem;">
+          <div class="loading-spinner"></div>
+        </div>
+        <div class="card-header" style="margin-top:0.5rem;">
+          <span class="card-title">🏆 Top 3 Prediksi</span>
+        </div>
+        <div id="shio-predicted" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Semua 12 Shio</span>
+        </div>
+        <div id="shio-all" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🔢 Angka 2D per Shio Prediksi</span>
+        <span class="text-xs text-muted">Angka 2D yang termasuk dalam shio terprediksi</span>
+      </div>
+      <div id="shio-2d-pool" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:0.5rem;">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== POLA IKUTAN ===== -->
+  <div id="page-pola" class="page">
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">📌 Hasil Terakhir</span>
+        <span class="text-xs text-muted" id="pola-total-pairs">— pasang dianalisis</span>
+      </div>
+      <div id="pola-last-result" style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+
+    <div class="grid-2 section-gap" style="align-items:start;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔚 Pola EKOR Ikutan</span>
+          <span class="text-xs text-muted" id="pola-last-ekor-label">—</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:0.75rem;">
+          Setelah ekor terakhir keluar, angka ekor berikut sering muncul:
+        </div>
+        <div id="pola-ekor" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔙 Pola KEPALA Ikutan</span>
+          <span class="text-xs text-muted" id="pola-last-kepala-label">—</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:0.75rem;">
+          Setelah kepala terakhir keluar, angka kepala berikut sering muncul:
+        </div>
+        <div id="pola-kepala" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">💡 Rekomendasi 2D dari Pola</span>
+        <span class="text-xs text-muted">Kombinasi kepala × ekor terkuat berdasarkan transisi</span>
+      </div>
+      <div id="pola-2d-recommend" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:0.5rem;">
+        <div class="loading-spinner"></div>
       </div>
     </div>
   </div>
