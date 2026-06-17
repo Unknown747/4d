@@ -73,6 +73,34 @@ function weightedPickDigit(
   return 9;
 }
 
+// ─── Shio mapping ──────────────────────────────────────────────────────────
+
+const SHIO_DEF = [
+  { name: "Tikus",   emoji: "🐭", nums: [0,12,24,36,48,60,72,84,96] },
+  { name: "Kerbau",  emoji: "🐂", nums: [1,13,25,37,49,61,73,85,97] },
+  { name: "Macan",   emoji: "🐯", nums: [2,14,26,38,50,62,74,86,98] },
+  { name: "Kelinci", emoji: "🐰", nums: [3,15,27,39,51,63,75,87,99] },
+  { name: "Naga",    emoji: "🐲", nums: [4,16,28,40,52,64,76,88] },
+  { name: "Ular",    emoji: "🐍", nums: [5,17,29,41,53,65,77,89] },
+  { name: "Kuda",    emoji: "🐴", nums: [6,18,30,42,54,66,78,90] },
+  { name: "Kambing", emoji: "🐐", nums: [7,19,31,43,55,67,79,91] },
+  { name: "Monyet",  emoji: "🐒", nums: [8,20,32,44,56,68,80,92] },
+  { name: "Ayam",    emoji: "🐓", nums: [9,21,33,45,57,69,81,93] },
+  { name: "Anjing",  emoji: "🐕", nums: [10,22,34,46,58,70,82,94] },
+  { name: "Babi",    emoji: "🐷", nums: [11,23,35,47,59,71,83,95] },
+];
+
+const SHIO_MAP: Record<string, { name: string; emoji: string }> = {};
+for (const s of SHIO_DEF) {
+  for (const n of s.nums) {
+    SHIO_MAP[String(n).padStart(2, "0")] = { name: s.name, emoji: s.emoji };
+  }
+}
+
+function getShio(twoD: string) {
+  return SHIO_MAP[twoD.padStart(2, "0")] ?? { name: "?", emoji: "❓" };
+}
+
 // ─── /api/stats ────────────────────────────────────────────────────────────
 
 router.get("/stats", (req, res): void => {
@@ -492,6 +520,183 @@ router.get("/bb-campuran", (req, res): void => {
     excludedNumbers,
     predictions,
     totalDrawsAnalyzed: total,
+  });
+});
+
+// ─── /api/shio ─────────────────────────────────────────────────────────────
+
+router.get("/shio", (_req, res): void => {
+  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+  if (rows.length === 0) { res.json({ shioStats: [], currentShio: null }); return; }
+  const total = rows.length;
+
+  const shioStats = SHIO_DEF.map(s => {
+    const nums = s.nums.map(n => String(n).padStart(2, "0"));
+    let count = 0, lastIdx = total;
+    rows.forEach((row, idx) => {
+      if (nums.includes(row.result_2d.padStart(2,"0"))) {
+        count++;
+        if (lastIdx === total) lastIdx = idx;
+      }
+    });
+    const freqW = count / total;
+    const recentW = 1 / (lastIdx + 1);
+    const overdueW = (lastIdx + 1) / (total + 1);
+    const score = freqW * 0.35 + recentW * 0.3 + overdueW * 0.35;
+    return { name: s.name, emoji: s.emoji, count, lastIdx, pct: Math.round(count / total * 100), score, nums };
+  }).sort((a, b) => b.score - a.score);
+
+  const cur2D = rows[0]!.result_4d.padStart(4, "0").slice(2);
+  res.json({
+    currentShio: { ...getShio(cur2D), number: cur2D, date: rows[0]!.draw_date },
+    predictedShios: shioStats.slice(0, 3),
+    shioStats,
+    totalDraws: total,
+  });
+});
+
+// ─── /api/pola-ikutan ──────────────────────────────────────────────────────
+
+router.get("/pola-ikutan", (_req, res): void => {
+  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+  if (rows.length < 5) { res.json({ ekorPatterns: [], kepalaPatterns: [] }); return; }
+
+  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
+  const kepalaTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
+
+  for (let i = 0; i < rows.length - 1; i++) {
+    const prev = rows[i + 1]!.result_4d.padStart(4, "0");
+    const curr = rows[i]!.result_4d.padStart(4, "0");
+    ekorTrans[parseInt(prev[3]!)]![parseInt(curr[3]!)]!++;
+    kepalaTrans[parseInt(prev[2]!)]![parseInt(curr[2]!)]!++;
+  }
+
+  const lastStr = rows[0]!.result_4d.padStart(4, "0");
+  const lastEkor = parseInt(lastStr[3]!);
+  const lastKepala = parseInt(lastStr[2]!);
+
+  const mkPatterns = (trans: number[][], from: number) =>
+    Array.from({ length: 10 }, (_, d) => ({
+      fromDigit: from, toDigit: d,
+      count: trans[from]![d]!,
+      total: trans[from]!.reduce((s, v) => s + v, 0),
+    })).filter(p => p.count > 0).sort((a, b) => b.count - a.count).slice(0, 5);
+
+  res.json({
+    lastResult: lastStr,
+    lastEkor, lastKepala,
+    ekorPatterns: mkPatterns(ekorTrans, lastEkor),
+    kepalaPatterns: mkPatterns(kepalaTrans, lastKepala),
+    totalPairs: rows.length - 1,
+  });
+});
+
+// ─── /api/angka-fix ────────────────────────────────────────────────────────
+
+router.get("/angka-fix", (_req, res): void => {
+  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+  if (rows.length < 5) { res.status(400).json({ error: "Data kurang, tambahkan minimal 5 draw." }); return; }
+
+  const total = rows.length;
+  const { posFreq, lastSeen } = buildPosFreq(rows);
+
+  // ── Shio signal ──
+  const shioFreq: Record<string, { count: number; lastIdx: number }> = {};
+  rows.forEach((row, idx) => {
+    const k = getShio(row.result_4d.padStart(4,"0").slice(2)).name;
+    if (!shioFreq[k]) shioFreq[k] = { count: 0, lastIdx: total };
+    shioFreq[k]!.count++;
+    if (shioFreq[k]!.lastIdx === total) shioFreq[k]!.lastIdx = idx;
+  });
+  const topShios = Object.entries(shioFreq)
+    .map(([name, { count, lastIdx }]) => ({
+      name, score: (count/total)*0.35 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.35,
+    })).sort((a, b) => b.score - a.score).slice(0, 3).map(s => s.name);
+
+  const shio2Ds = new Set<string>();
+  for (const s of SHIO_DEF) {
+    if (topShios.includes(s.name)) {
+      for (const n of s.nums) shio2Ds.add(String(n).padStart(2, "0"));
+    }
+  }
+
+  // ── Pola Ikutan signal (ekor transition) ──
+  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
+  for (let i = 0; i < rows.length - 1; i++) {
+    const pE = parseInt(rows[i+1]!.result_4d.padStart(4,"0")[3]!);
+    const cE = parseInt(rows[i]!.result_4d.padStart(4,"0")[3]!);
+    ekorTrans[pE]![cE]!++;
+  }
+  const lastEkor = parseInt(rows[0]!.result_4d.padStart(4,"0")[3]!);
+  const goodNextEkors = new Set(
+    Array.from({ length: 10 }, (_, d) => d)
+      .sort((a, b) => ekorTrans[lastEkor]![b]! - ekorTrans[lastEkor]![a]!)
+      .slice(0, 3)
+  );
+
+  // ── Positional score ──
+  function ps(pos: number, digit: number) {
+    const c = posFreq[pos]![digit]!;
+    const seen = lastSeen[pos]![digit]!;
+    return (c/total)*0.4 + (1/(seen+1))*0.3 + ((seen+1)/(total+1))*0.3;
+  }
+
+  // ── 4D/BB Fix via BB-campuran + boosts ──
+  const digitScore = (d: number) => [0,1,2,3].reduce((s, p) => s + ps(p, d), 0);
+  const top5 = Array.from({length:10},(_,d)=>d).sort((a,b)=>digitScore(b)-digitScore(a)).slice(0,5);
+  const excluded4D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+
+  const cands4D: { num: string; score: number }[] = [];
+  for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
+    const num = `${d0}${d1}${d2}${d3}`;
+    if (excluded4D.has(num)) continue;
+    let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
+    if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;   // shio boost
+    if (goodNextEkors.has(d3))      score *= 1.12;   // pola boost
+    cands4D.push({ num, score });
+  }
+  cands4D.sort((a, b) => b.score - a.score);
+  const fix4D = cands4D[0]?.num ?? "????";
+
+  // ── 2D Fix (independent from 2D frequency + boosts) ──
+  const freq2D = build2dFreq(rows);
+  const excluded2D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0").slice(2)));
+  const all2D = Object.entries(freq2D)
+    .filter(([num]) => !excluded2D.has(num))
+    .map(([num, {count,lastIdx}]) => {
+      let score = (count/total)*0.4+(1/(lastIdx+1))*0.3+((lastIdx+1)/(total+1))*0.3;
+      if (shio2Ds.has(num.padStart(2,"0")))               score *= 1.18;
+      if (goodNextEkors.has(parseInt(num[num.length-1]!))) score *= 1.12;
+      return { num, score };
+    }).sort((a,b)=>b.score-a.score);
+  const fix2D = all2D[0]?.num ?? "??";
+
+  // ── 3D Fix ──
+  const freq3D = build3dFreq(rows);
+  const excluded3D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0").slice(1)));
+  const all3D = Object.entries(freq3D)
+    .filter(([num]) => !excluded3D.has(num))
+    .map(([num,{count,lastIdx}]) => ({
+      num,
+      score: (count/total)*0.4+(1/(lastIdx+1))*0.3+((lastIdx+1)/(total+1))*0.3,
+    })).sort((a,b)=>b.score-a.score);
+  // If all3D is empty (all excluded), fall back to best non-excluded 3D from 4D candidates
+  const fix3D = all3D[0]?.num ?? fix4D.slice(1);
+
+  const confidence = Math.min(95, Math.round(50 + (total / 60) * 45));
+
+  res.json({
+    fix: {
+      "4d": { number: fix4D,       shio: getShio(fix4D.slice(2)),  confidence },
+      "3d": { number: fix3D,       shio: getShio(fix3D.slice(1)),  confidence: Math.max(40, confidence - 10) },
+      "2d": { number: fix2D,       shio: getShio(fix2D),           confidence: Math.min(95, confidence + 5) },
+      "bb": { number: fix4D,       shio: getShio(fix4D.slice(2)),  confidence },
+    },
+    signals: {
+      shioBonus: topShios,
+      ekorBonus: [...goodNextEkors],
+      totalDraws: total,
+    },
   });
 });
 

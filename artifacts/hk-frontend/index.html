@@ -22,6 +22,7 @@
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="showPage('dashboard')">📊 Dashboard</button>
     <button class="nav-tab" onclick="showPage('prediksi')">🎯 Prediksi</button>
+    <button class="nav-tab" onclick="showPage('shio')">🐉 Shio</button>
     <button class="nav-tab" onclick="showPage('analisis')">🔬 Analisis</button>
     <button class="nav-tab" onclick="showPage('history')">📋 History</button>
     <button class="nav-tab" onclick="showPage('bb')">🎰 BB</button>
@@ -133,6 +134,17 @@
 
   <!-- ===== PREDIKSI ===== -->
   <div id="page-prediksi" class="page">
+
+    <!-- ANGKA FIX -->
+    <div class="card section-gap angka-fix-card" id="angka-fix-prediksi">
+      <div class="card-header">
+        <span class="card-title">⭐ ANGKA FIX HARI INI</span>
+        <span class="af-badge">Shio + Pola + Posisi</span>
+      </div>
+      <div id="af-prediksi-body" class="af-body">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
 
     <!-- Winrate Card -->
     <div class="card section-gap" id="winrate-card">
@@ -310,8 +322,66 @@
     </div>
   </div>
 
+  <!-- ===== SHIO ===== -->
+  <div id="page-shio" class="page">
+
+    <!-- Current Shio -->
+    <div class="card section-gap angka-fix-card">
+      <div class="card-header">
+        <span class="card-title">🐉 Analisis Shio HK</span>
+        <span class="af-badge">Zodiak Cina</span>
+      </div>
+      <div id="shio-current-block" class="shio-current">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
+
+    <!-- Prediksi Shio Berikutnya -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🔮 Prediksi Shio Berikutnya</span>
+      </div>
+      <div id="shio-predicted-list" class="shio-pred-list">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
+
+    <!-- Pola Ikutan -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🔗 Pola Ikutan (Consecutive)</span>
+        <span class="text-xs text-muted" id="pola-pairs-label"></span>
+      </div>
+      <div id="pola-ikutan-body">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
+
+    <!-- Frekuensi Semua Shio -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">📊 Frekuensi Semua Shio</span>
+      </div>
+      <div id="shio-freq-table">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ===== BB CAMPURAN ===== -->
   <div id="page-bb" class="page">
+
+    <!-- Angka Fix BB -->
+    <div class="card section-gap angka-fix-card">
+      <div class="card-header">
+        <span class="card-title">⭐ ANGKA FIX BB</span>
+        <span class="af-badge">Shio + Pola + BB</span>
+      </div>
+      <div id="af-bb-body" class="af-body">
+        <div class="loading-spinner" style="margin:1rem auto;"></div>
+      </div>
+    </div>
 
     <!-- Auto Results (primary) -->
     <div class="card section-gap" id="bb-auto-card">
