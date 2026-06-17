@@ -355,6 +355,103 @@ router.get("/predict", (req, res): void => {
   }
 });
 
+// ─── /api/bb-campuran ──────────────────────────────────────────────────────
+// Generate all 4D permutations (with repetition) from selected active digits,
+// score each using positional frequency analysis, return top 10.
+
+router.get("/bb-campuran", (req, res): void => {
+  const rawDigits = (req.query["digits"] as string) ?? "";
+  const mode = (req.query["mode"] as string) ?? "hot";
+
+  // Parse & validate active digits
+  const activeDigits = [...new Set(rawDigits.replace(/\D/g, "").split("").map(Number))].sort((a, b) => a - b);
+
+  if (activeDigits.length < 2) {
+    res.status(400).json({ error: "Pilih minimal 2 digit aktif." });
+    return;
+  }
+  if (activeDigits.length > 9) {
+    res.status(400).json({ error: "Maksimal 9 digit aktif." });
+    return;
+  }
+
+  const rows = db.prepare(
+    `SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`
+  ).all() as Row[];
+
+  if (rows.length < 3) {
+    res.status(400).json({ error: "Data kurang, tambahkan minimal 3 result dahulu." });
+    return;
+  }
+
+  const total = rows.length;
+  const { posFreq, lastSeen } = buildPosFreq(rows);
+
+  // Score a single digit at a given position
+  function posScore(pos: number, digit: number): number {
+    const count = posFreq[pos]![digit]!;
+    const seen = lastSeen[pos]![digit]!;
+    const freqW = count / total;
+    const recentW = 1 / (seen + 1);
+    const overdueW = (seen + 1) / (total + 1);
+    if (mode === "hot")     return freqW * 0.4 + recentW * 0.6;
+    if (mode === "cold")    return (1 - freqW) * 0.5 + overdueW * 0.5;
+    return freqW * 0.4 + recentW * 0.3 + overdueW * 0.3;
+  }
+
+  // Generate all combinations (with repetition): activeDigits^4
+  const n = activeDigits.length;
+  const totalCombinations = n * n * n * n;
+
+  const candidates: { number: string; score: number }[] = [];
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      for (let k = 0; k < n; k++) {
+        for (let l = 0; l < n; l++) {
+          const d0 = activeDigits[i]!;
+          const d1 = activeDigits[j]!;
+          const d2 = activeDigits[k]!;
+          const d3 = activeDigits[l]!;
+          const num = `${d0}${d1}${d2}${d3}`;
+          const score = posScore(0, d0) + posScore(1, d1) + posScore(2, d2) + posScore(3, d3);
+          candidates.push({ number: num, score });
+        }
+      }
+    }
+  }
+
+  // Sort descending, take top 10
+  candidates.sort((a, b) => b.score - a.score);
+  const top10 = candidates.slice(0, 10);
+
+  // Normalize scores to 0–100 range for display
+  const maxScore = top10[0]!.score;
+  const minScore = candidates[candidates.length - 1]!.score;
+  const range = maxScore - minScore || 1;
+
+  const predictions = top10.map((c, i) => {
+    const s = c.number.padStart(4, "0");
+    const result3d = s.slice(1);
+    const result2d = s.slice(2);
+    const displayScore = Math.round(60 + ((c.score - minScore) / range) * 40);
+    const reason =
+      i === 0 ? "⭐ Kombinasi digit terkuat" :
+      i < 3   ? "🔥 Skor posisional tinggi" :
+      i < 6   ? "📊 Pola frekuensi baik" :
+                "📈 Kandidat alternatif";
+    return { number: s, result3d, result2d, score: displayScore, reason };
+  });
+
+  res.json({
+    activeDigits,
+    mode,
+    totalCombinations,
+    predictions,
+    totalDrawsAnalyzed: total,
+  });
+});
+
 // ─── /api/history-chart ────────────────────────────────────────────────────
 
 router.get("/history-chart", (req, res) => {

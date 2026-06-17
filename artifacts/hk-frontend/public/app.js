@@ -61,6 +61,7 @@ const PAGE_TITLES = {
   prediksi: '🎯 Prediksi',
   analisis: '🔬 Analisis',
   history: '📋 History',
+  bb: '🎰 BB Campuran',
   input: '➕ Input',
 };
 
@@ -537,10 +538,112 @@ async function submitResult(e) {
   }
 }
 
+// ─── BB Campuran ───────────────────────────────────────────────
+
+let bbActiveDigits = new Set();
+let bbMode = 'hot';
+
+function initBBDigitGrid() {
+  const grid = document.getElementById('bb-digit-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let d = 0; d <= 9; d++) {
+    const btn = document.createElement('button');
+    btn.className = 'bb-digit-btn';
+    btn.textContent = d;
+    btn.dataset.digit = d;
+    btn.onclick = () => toggleBBDigit(d, btn);
+    grid.appendChild(btn);
+  }
+}
+
+function toggleBBDigit(digit, btn) {
+  if (bbActiveDigits.has(digit)) {
+    bbActiveDigits.delete(digit);
+    btn.classList.remove('active');
+    btn.classList.add('dead');
+  } else {
+    bbActiveDigits.add(digit);
+    btn.classList.remove('dead');
+    btn.classList.add('active');
+  }
+  updateBBSummary();
+}
+
+function updateBBSummary() {
+  const el = document.getElementById('bb-selected-text');
+  if (!el) return;
+  const sorted = [...bbActiveDigits].sort((a, b) => a - b);
+  if (sorted.length === 0) {
+    el.innerHTML = 'Pilih digit di atas';
+    return;
+  }
+  const dead = [0,1,2,3,4,5,6,7,8,9].filter(d => !bbActiveDigits.has(d));
+  const n = sorted.length;
+  const combos = n * n * n * n;
+  el.innerHTML = `Digit aktif: <strong>${sorted.join(' ')}</strong> &nbsp;·&nbsp; Mati: <strong style="color:var(--text-muted)">${dead.length > 0 ? dead.join(' ') : '—'}</strong> &nbsp;·&nbsp; ${combos} kombinasi 4D`;
+}
+
+function setBBMode(btn, mode) {
+  bbMode = mode;
+  document.querySelectorAll('#page-bb .mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function generateBB() {
+  const sorted = [...bbActiveDigits].sort((a, b) => a - b);
+  if (sorted.length < 2) {
+    toast('Pilih minimal 2 digit aktif', 'error');
+    return;
+  }
+
+  const resultCard = document.getElementById('bb-result-card');
+  const resultList = document.getElementById('bb-results-list');
+  resultCard.style.display = 'block';
+  resultList.innerHTML = '<div class="loading-spinner" style="margin:1rem auto;"></div>';
+
+  try {
+    const data = await api(`/bb-campuran?digits=${sorted.join('')}&mode=${bbMode}`);
+
+    document.getElementById('bb-result-title').textContent =
+      `🏆 Top 10 — Digit [${data.activeDigits.join(' ')}] — Mode ${bbMode}`;
+    document.getElementById('bb-combinations-info').textContent =
+      `${data.totalCombinations} kombinasi dianalisis`;
+
+    resultList.innerHTML = data.predictions.map((p, i) =>
+      `<div class="bb-result-item">
+        <div class="bb-rank">#${i + 1}</div>
+        <div class="bb-nums">
+          <div class="bb-4d">${escapeHtml(p.number)}</div>
+          <div class="bb-derived">
+            <span class="bb-badge b3d">3D: ${escapeHtml(p.result3d)}</span>
+            <span class="bb-badge b2d">2D: ${escapeHtml(p.result2d)}</span>
+          </div>
+        </div>
+        <div class="bb-score-col">
+          <div class="bb-score-num">${p.score}</div>
+          <div class="bb-reason">${escapeHtml(p.reason)}</div>
+        </div>
+      </div>`
+    ).join('');
+
+    resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    resultList.innerHTML = '';
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:1rem;color:var(--text-muted);font-size:13px;text-align:center;';
+    div.textContent = '❌ ' + e.message;
+    resultList.appendChild(div);
+    toast(e.message, 'error');
+  }
+}
+
 // ─── Init ──────────────────────────────────────────────────────
 
 // Set today's date
 document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+
+initBBDigitGrid();
 
 (async function init() {
   await loadStats();

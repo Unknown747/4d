@@ -24,6 +24,7 @@
     <button class="nav-tab" onclick="showPage('prediksi')">🎯 Prediksi</button>
     <button class="nav-tab" onclick="showPage('analisis')">🔬 Analisis</button>
     <button class="nav-tab" onclick="showPage('history')">📋 History</button>
+    <button class="nav-tab" onclick="showPage('bb')">🎰 BB</button>
     <button class="nav-tab" onclick="showPage('input')">➕ Input</button>
   </div>
   <div style="font-size:12px;color:var(--text-muted);padding:4px 10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
@@ -292,6 +293,61 @@
     </div>
   </div>
 
+  <!-- ===== BB CAMPURAN ===== -->
+  <div id="page-bb" class="page">
+
+    <!-- Digit Selector -->
+    <div class="card section-gap">
+      <div class="card-header">
+        <span class="card-title">🎰 BB Campuran — Filter Digit Aktif</span>
+      </div>
+      <p class="bb-desc">Pilih digit yang diprediksi akan keluar. Sistem akan generate semua kombinasi 4D dari digit tersebut dan ranking berdasarkan analisis posisional.</p>
+
+      <div class="bb-digit-grid" id="bb-digit-grid">
+        <!-- digits 0-9 rendered by JS -->
+      </div>
+
+      <div class="bb-selected-summary" id="bb-selected-summary">
+        <span id="bb-selected-text">Pilih digit di atas</span>
+      </div>
+
+      <div class="mode-selector" style="margin-top:0.75rem;">
+        <button class="mode-btn active" onclick="setBBMode(this,'hot')">🔥 Hot</button>
+        <button class="mode-btn" onclick="setBBMode(this,'cold')">🧊 Cold</button>
+        <button class="mode-btn" onclick="setBBMode(this,'balanced')">⚖️ Balanced</button>
+      </div>
+
+      <button class="btn btn-primary btn-full" style="margin-top:0.75rem;" onclick="generateBB()">🔢 Generate Top 10</button>
+    </div>
+
+    <!-- Results -->
+    <div class="card section-gap" id="bb-result-card" style="display:none;">
+      <div class="card-header">
+        <span class="card-title" id="bb-result-title">🏆 Top 10 4D BB Campuran</span>
+        <span class="text-xs text-muted" id="bb-combinations-info">—</span>
+      </div>
+      <div id="bb-results-list" class="bb-results"></div>
+    </div>
+
+    <!-- Guide -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📖 Cara Pakai BB Campuran</span>
+      </div>
+      <div class="guide-text">
+        <p>Misal prediksi digit aktif: <strong class="mono">0 1 2 3 4</strong></p>
+        <p style="margin-top:0.5rem;">Dari 5 digit tersebut, sistem akan menganalisis <strong>5⁴ = 625</strong> kombinasi 4D yang mungkin, lalu pilih <strong>10 terbaik</strong> berdasarkan frekuensi historis tiap posisi (AS, KOP, KEPALA, EKOR).</p>
+        <p style="margin-top:0.5rem;">Nomor 3D dan 2D otomatis mengikuti 4D yang dipilih.</p>
+        <p style="margin-top:0.5rem; font-size:12px; color:var(--text-muted);">Contoh: 4D = <span class="mono">0123</span> → 3D: <span class="mono">123</span> · 2D: <span class="mono">23</span></p>
+        <div class="disclaimer-box" style="margin-top:0.75rem;">
+          <strong>DISCLAIMER</strong>
+          <p>Prediksi bersifat statistik & edukatif. Tidak ada jaminan kemenangan. Gunakan dengan bijak.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ===== INPUT ===== -->
   <div id="page-input" class="page">
     <div class="card section-gap">
@@ -369,6 +425,10 @@
   <button class="bottom-tab" onclick="showPage('history')">
     <span class="bottom-icon">📋</span>
     <span class="bottom-label">History</span>
+  </button>
+  <button class="bottom-tab" onclick="showPage('bb')">
+    <span class="bottom-icon">🎰</span>
+    <span class="bottom-label">BB</span>
   </button>
   <button class="bottom-tab" onclick="showPage('input')">
     <span class="bottom-icon">➕</span>
