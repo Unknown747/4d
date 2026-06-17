@@ -79,6 +79,14 @@ export interface FixData {
   signals: { shioBonus: string[]; ekorBonus: number[]; totalDraws: number };
 }
 
+export interface RekomendasiData {
+  tanggal: string;
+  angkaKuat: number[];
+  predictions: { rank: number; num4d: string; num3d: string; num2d: string; score: number }[];
+  signals: { shioBonus: string[]; ekorBonus: number[]; totalDraws: number };
+  confidence: number;
+}
+
 export interface AccuracyData {
   enough: boolean;
   message?: string;

@@ -700,6 +700,117 @@ router.get("/angka-fix", (_req, res): void => {
   });
 });
 
+// ─── /api/rekomendasi ──────────────────────────────────────────────────────
+// Satu suara: gabungkan semua sinyal → top 10 4D + turunan 3D/2D
+
+router.get("/rekomendasi", (_req, res): void => {
+  const rows = db.prepare(`SELECT * FROM hk4d_results ORDER BY draw_date DESC LIMIT 60`).all() as Row[];
+  if (rows.length < 5) { res.status(400).json({ error: "Data kurang, tambahkan minimal 5 draw." }); return; }
+
+  const total = rows.length;
+  const { posFreq, lastSeen } = buildPosFreq(rows);
+
+  // ── Shio signal ──
+  const shioFreq: Record<string, { count: number; lastIdx: number }> = {};
+  rows.forEach((row, idx) => {
+    const k = getShio(row.result_4d.padStart(4,"0").slice(2)).name;
+    if (!shioFreq[k]) shioFreq[k] = { count: 0, lastIdx: total };
+    shioFreq[k]!.count++;
+    if (shioFreq[k]!.lastIdx === total) shioFreq[k]!.lastIdx = idx;
+  });
+  const topShios = Object.entries(shioFreq)
+    .map(([name, { count, lastIdx }]) => ({
+      name, score: (count/total)*0.35 + (1/(lastIdx+1))*0.3 + ((lastIdx+1)/(total+1))*0.35,
+    })).sort((a, b) => b.score - a.score).slice(0, 3).map(s => s.name);
+
+  const shio2Ds = new Set<string>();
+  for (const s of SHIO_DEF) {
+    if (topShios.includes(s.name)) {
+      for (const n of s.nums) shio2Ds.add(String(n).padStart(2, "0"));
+    }
+  }
+
+  // ── Pola Ikutan signal ──
+  const ekorTrans: number[][] = Array.from({ length: 10 }, () => Array(10).fill(0));
+  for (let i = 0; i < rows.length - 1; i++) {
+    const pE = parseInt(rows[i+1]!.result_4d.padStart(4,"0")[3]!);
+    const cE = parseInt(rows[i]!.result_4d.padStart(4,"0")[3]!);
+    ekorTrans[pE]![cE]!++;
+  }
+  const lastEkor = parseInt(rows[0]!.result_4d.padStart(4,"0")[3]!);
+  const goodNextEkors = new Set(
+    Array.from({ length: 10 }, (_, d) => d)
+      .sort((a, b) => ekorTrans[lastEkor]![b]! - ekorTrans[lastEkor]![a]!)
+      .slice(0, 3)
+  );
+
+  // ── Positional score ──
+  function ps(pos: number, digit: number) {
+    const c = posFreq[pos]![digit]!;
+    const seen = lastSeen[pos]![digit]!;
+    return (c/total)*0.4 + (1/(seen+1))*0.3 + ((seen+1)/(total+1))*0.3;
+  }
+
+  // ── Top 5 Angka Kuat ──
+  const digitScore = (d: number) => [0,1,2,3].reduce((s, p) => s + ps(p, d), 0);
+  const top5 = Array.from({length:10},(_,d)=>d)
+    .sort((a,b)=>digitScore(b)-digitScore(a))
+    .slice(0,5);
+
+  // ── Generate top 10 4D dari top5 digits (BB-campuran) ──
+  const excluded4D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+
+  const cands4D: { num: string; score: number }[] = [];
+  for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
+    const num = `${d0}${d1}${d2}${d3}`;
+    if (excluded4D.has(num)) continue;
+    let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
+    if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;
+    if (goodNextEkors.has(d3))      score *= 1.12;
+    cands4D.push({ num, score });
+  }
+  cands4D.sort((a, b) => b.score - a.score);
+
+  // Ambil top 10 — hindari duplikat 3D/2D agar variatif
+  const seen3D = new Set<string>();
+  const seen2D = new Set<string>();
+  const top10: { rank: number; num4d: string; num3d: string; num2d: string; score: number }[] = [];
+  for (const c of cands4D) {
+    if (top10.length >= 10) break;
+    const n3d = c.num.slice(1);
+    const n2d = c.num.slice(2);
+    if (seen3D.has(n3d) && seen2D.has(n2d)) continue;
+    seen3D.add(n3d);
+    seen2D.add(n2d);
+    top10.push({ rank: top10.length+1, num4d: c.num, num3d: n3d, num2d: n2d, score: Math.round(c.score*10000)/10000 });
+  }
+
+  // Fallback jika kurang dari 10 (data sedikit) — isi dari cands tanpa filter
+  if (top10.length < 10) {
+    for (const c of cands4D) {
+      if (top10.length >= 10) break;
+      if (top10.some(t => t.num4d === c.num)) continue;
+      const n3d = c.num.slice(1);
+      const n2d = c.num.slice(2);
+      top10.push({ rank: top10.length+1, num4d: c.num, num3d: n3d, num2d: n2d, score: Math.round(c.score*10000)/10000 });
+    }
+  }
+
+  const confidence = Math.min(90, Math.round(45 + (total / 60) * 45));
+
+  res.json({
+    tanggal: rows[0]!.draw_date,
+    angkaKuat: top5,
+    predictions: top10,
+    signals: {
+      shioBonus: topShios,
+      ekorBonus: [...goodNextEkors],
+      totalDraws: total,
+    },
+    confidence,
+  });
+});
+
 // ─── /api/accuracy ─────────────────────────────────────────────────────────
 // Backtesting: for each draw (starting from draw #8), simulate prediction
 // using only prior data, check if actual result was in predicted list.

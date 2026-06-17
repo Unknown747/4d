@@ -1,9 +1,8 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchApi, type StatsData, type Row } from '../lib/api';
+import { fetchApi, type StatsData, type Row, type RekomendasiData } from '../lib/api';
 import { useToast } from '../components/Toast';
 
-// Today's date in YYYY-MM-DD format (local timezone)
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -26,6 +25,147 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
   );
 }
 
+// ── Rekomendasi Hari Ini ─────────────────────────────────────────────────────
+function RekomendasiHariIni() {
+  const { toast } = useToast();
+  const { data, isLoading, error } = useQuery<RekomendasiData>({
+    queryKey: ['rekomendasi'],
+    queryFn: () => fetchApi<RekomendasiData>('/rekomendasi'),
+    staleTime: 120_000,
+  });
+
+  function handleCopy() {
+    if (!data) return;
+    const lines = [
+      `🎯 Rekomendasi HK Toto — ${data.tanggal}`,
+      `Angka Kuat: ${data.angkaKuat.join(' · ')}`,
+      `Confidence: ${data.confidence}%`,
+      '',
+      `No  | 4D   | 3D  | 2D`,
+      ...data.predictions.map(p =>
+        `${String(p.rank).padStart(2,'0')}  | ${p.num4d} | ${p.num3d} | ${p.num2d}`
+      ),
+      '',
+      `Sinyal: Shio (${data.signals.shioBonus.join(', ')}) · Ekor ikut (${data.signals.ekorBonus.join(',')})`,
+    ].join('\n');
+    navigator.clipboard.writeText(lines).then(() => toast('Disalin ke clipboard!', 'success'));
+  }
+
+  if (isLoading) return (
+    <div className="card border-amber-500/40 bg-gradient-to-br from-[#0d1b2a] to-[#111827]">
+      <div className="card-header">🎯 Rekomendasi Hari Ini</div>
+      <div className="flex justify-center py-8"><div className="spinner" /></div>
+    </div>
+  );
+
+  if (error || !data) return (
+    <div className="card border-red-500/30">
+      <div className="card-header">🎯 Rekomendasi Hari Ini</div>
+      <div className="text-red-400 text-sm py-4 text-center">Tambahkan minimal 5 data draw untuk melihat rekomendasi.</div>
+    </div>
+  );
+
+  const BALL_COLORS = ['#f59e0b','#ef4444','#3b82f6','#10b981','#a855f7'];
+
+  return (
+    <div className="card border-amber-500/40 bg-gradient-to-br from-[#0d1420] to-[#0f1a2e]">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-amber-400 font-bold text-lg tracking-wide">🎯 Rekomendasi Hari Ini</div>
+          <div className="text-xs text-slate-500 mt-0.5">
+            Gabungan sinyal: Posisi · Shio · Pola Ikutan &nbsp;·&nbsp; {data.signals.totalDraws} draw
+          </div>
+        </div>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg text-amber-400 text-xs font-medium transition-colors"
+        >
+          📋 Copy Semua
+        </button>
+      </div>
+
+      {/* Confidence bar */}
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-xs text-slate-500 shrink-0">Confidence</span>
+        <div className="flex-1 bg-slate-700/60 rounded-full h-2">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${data.confidence}%`, background: 'linear-gradient(90deg,#f59e0b,#ef4444)' }}
+          />
+        </div>
+        <span className="text-amber-400 font-bold text-sm shrink-0">{data.confidence}%</span>
+      </div>
+
+      {/* 5 Angka Kuat */}
+      <div className="mb-4">
+        <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">5 Angka Kuat (BB)</div>
+        <div className="flex gap-2 flex-wrap">
+          {data.angkaKuat.map((d, i) => (
+            <div
+              key={d}
+              className="w-11 h-11 rounded-full flex items-center justify-center font-black text-xl text-white shadow-lg"
+              style={{ background: `${BALL_COLORS[i]}22`, border: `2px solid ${BALL_COLORS[i]}`, color: BALL_COLORS[i] }}
+            >
+              {d}
+            </div>
+          ))}
+          <div className="flex items-center text-xs text-slate-500 ml-2">
+            → kombinasi 4D di bawah
+          </div>
+        </div>
+      </div>
+
+      {/* Sinyal aktif */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {data.signals.shioBonus.map(s => (
+          <span key={s} className="px-2 py-0.5 bg-purple-900/40 border border-purple-700/50 rounded text-purple-300 text-xs">🔮 {s}</span>
+        ))}
+        {data.signals.ekorBonus.map(e => (
+          <span key={e} className="px-2 py-0.5 bg-blue-900/40 border border-blue-700/50 rounded text-blue-300 text-xs">🎯 Ekor {e}</span>
+        ))}
+      </div>
+
+      {/* Top 10 Predictions Table */}
+      <div className="overflow-x-auto rounded-lg border border-slate-700/50">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-800/60 border-b border-slate-700 text-slate-400 text-xs uppercase">
+              <th className="text-center py-2 px-3 w-8">#</th>
+              <th className="text-center py-2 px-3">4D</th>
+              <th className="text-center py-2 px-3">3D</th>
+              <th className="text-center py-2 px-3">2D</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.predictions.map((p, i) => (
+              <tr
+                key={p.num4d}
+                className={`border-b border-slate-800/50 transition-colors hover:bg-white/3 ${i === 0 ? 'bg-amber-500/5' : ''}`}
+              >
+                <td className="text-center py-2 px-3 text-slate-500 text-xs">{p.rank}</td>
+                <td className="text-center py-2 px-3">
+                  <span className={`font-black font-mono text-base tracking-widest ${i === 0 ? 'text-amber-400' : 'text-white'}`}>
+                    {p.num4d}
+                  </span>
+                  {i === 0 && <span className="ml-1.5 text-xs text-amber-500/80">★</span>}
+                </td>
+                <td className="text-center py-2 px-3 font-mono text-amber-300/80 text-sm">{p.num3d}</td>
+                <td className="text-center py-2 px-3 font-mono text-green-400/80 text-sm">{p.num2d}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-xs text-slate-600 mt-3 text-center">
+        3D dan 2D otomatis dari 4D · Diperbarui setiap ada data baru
+      </div>
+    </div>
+  );
+}
+
+// ── Quick Input ──────────────────────────────────────────────────────────────
 function QuickInput({ onSaved }: { onSaved: () => void }) {
   const { toast } = useToast();
   const [date, setDate] = useState(todayStr());
@@ -59,14 +199,13 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
   }
 
   return (
-    <div className="card border-amber-500/30 bg-gradient-to-r from-[#111827] to-[#0d1b2a]">
+    <div className="card border-slate-600/30 bg-[#0d1420]">
       <div className="card-header">
         ➕ Input Result Hari Ini
         <span className="ml-auto text-xs text-slate-500">Update manual setelah draw keluar</span>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        {/* Date picker */}
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500 uppercase tracking-wide font-medium">Tanggal</label>
           <input
@@ -77,7 +216,6 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
           />
         </div>
 
-        {/* 4D input */}
         <div className="flex flex-col gap-1 flex-1">
           <label className="text-xs text-slate-500 uppercase tracking-wide font-medium">Nomor 4D (0000–9999)</label>
           <div className="flex gap-2">
@@ -104,7 +242,6 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
         </div>
       </div>
 
-      {/* Live preview */}
       {angka.length > 0 && (
         <div className="flex items-center gap-3 mt-3">
           <div className="flex gap-2">
@@ -122,11 +259,11 @@ function QuickInput({ onSaved }: { onSaved: () => void }) {
           )}
         </div>
       )}
-
     </div>
   );
 }
 
+// ── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery<StatsData>({
@@ -139,55 +276,47 @@ export default function Dashboard() {
     qc.invalidateQueries({ queryKey: ['stats'] });
     qc.invalidateQueries({ queryKey: ['results'] });
     qc.invalidateQueries({ queryKey: ['predict'] });
+    qc.invalidateQueries({ queryKey: ['rekomendasi'] });
   }
 
-  if (isLoading) return (
-    <div className="space-y-4">
-      <QuickInput onSaved={handleSaved} />
-      <div className="flex justify-center py-12"><div className="spinner" /></div>
-    </div>
-  );
-  if (error || !data) return (
-    <div className="space-y-4">
-      <QuickInput onSaved={handleSaved} />
-      <div className="text-red-400 text-center py-8">{String(error)}</div>
-    </div>
-  );
-
-  const latest = data.latestResult;
+  const latest = data?.latestResult;
   const s = latest?.result_4d?.padStart(4, '0') ?? '????';
 
   return (
     <div className="space-y-4">
 
-      {/* ── Quick Input ── */}
-      <QuickInput onSaved={handleSaved} />
+      {/* ── 1. Rekomendasi Hari Ini (teratas) ── */}
+      <RekomendasiHariIni />
 
-      {/* ── Stats Row ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="card text-center">
-          <div className="stat-label">Total Draw</div>
-          <div className="stat-value text-amber-400">{data.totalDraws}</div>
-          <div className="stat-sub">data tersedia</div>
+      {/* ── 2. Stats Row ── */}
+      {data && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="card text-center">
+            <div className="stat-label">Total Draw</div>
+            <div className="stat-value text-amber-400">{data.totalDraws}</div>
+            <div className="stat-sub">data tersedia</div>
+          </div>
+          <div className="card text-center">
+            <div className="stat-label">Draw Terakhir</div>
+            <div className="stat-value text-white text-xl">{latest?.draw_date ?? '—'}</div>
+            <div className="stat-sub">tanggal</div>
+          </div>
+          <div className="card text-center">
+            <div className="stat-label">Top 2D</div>
+            <div className="stat-value text-red-400">{data.hot2D[0]?.number ?? '—'}</div>
+            <div className="stat-sub">paling sering</div>
+          </div>
+          <div className="card text-center">
+            <div className="stat-label">Overdue 2D</div>
+            <div className="stat-value text-blue-400">{data.overdue2D[0]?.number ?? '—'}</div>
+            <div className="stat-sub">paling tertunggak</div>
+          </div>
         </div>
-        <div className="card text-center">
-          <div className="stat-label">Draw Terakhir</div>
-          <div className="stat-value text-white text-xl">{latest?.draw_date ?? '—'}</div>
-          <div className="stat-sub">tanggal</div>
-        </div>
-        <div className="card text-center">
-          <div className="stat-label">Top 2D</div>
-          <div className="stat-value text-red-400">{data.hot2D[0]?.number ?? '—'}</div>
-          <div className="stat-sub">paling sering</div>
-        </div>
-        <div className="card text-center">
-          <div className="stat-label">Overdue 2D</div>
-          <div className="stat-value text-blue-400">{data.overdue2D[0]?.number ?? '—'}</div>
-          <div className="stat-sub">paling tertunggak</div>
-        </div>
-      </div>
+      )}
+      {isLoading && <div className="flex justify-center py-6"><div className="spinner" /></div>}
+      {error && <div className="text-red-400 text-center py-4 text-sm">{String(error)}</div>}
 
-      {/* ── Latest Result ── */}
+      {/* ── 3. Latest Result ── */}
       {latest && (
         <div className="card">
           <div className="card-header">🎰 Hasil Draw Terakhir <span className="text-xs text-slate-500 ml-auto">{latest.draw_date}</span></div>
@@ -206,82 +335,92 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Hot & Overdue ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="card">
-          <div className="card-header">🔥 Top 2D Terpanas</div>
-          <div className="space-y-2 mt-1">
-            {data.hot2D.slice(0, 8).map(n => (
-              <BarRow key={n.number} label={n.number} value={n.count} max={data.hot2D[0]?.count ?? 1} color="#ef4444" />
-            ))}
+      {/* ── 4. Hot & Overdue ── */}
+      {data && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="card">
+            <div className="card-header">🔥 Top 2D Terpanas</div>
+            <div className="space-y-2 mt-1">
+              {data.hot2D.slice(0, 8).map(n => (
+                <BarRow key={n.number} label={n.number} value={n.count} max={data.hot2D[0]?.count ?? 1} color="#ef4444" />
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header">❄️ 2D Overdue (Tertunggak)</div>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {data.overdue2D.slice(0, 12).map(n => (
+                <div key={n.number} className="flex flex-col items-center gap-1">
+                  <div className="w-10 h-10 rounded-full bg-blue-900/40 border border-blue-700 flex items-center justify-center font-bold text-blue-300 text-sm">{n.number}</div>
+                  <div className="text-xs text-slate-500">{n.lastDrawsAgo}x</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+      )}
+
+      {/* ── 5. Positional Analysis ── */}
+      {data && (
         <div className="card">
-          <div className="card-header">❄️ 2D Overdue (Tertunggak)</div>
-          <div className="flex flex-wrap gap-2 mt-1">
-            {data.overdue2D.slice(0, 12).map(n => (
-              <div key={n.number} className="flex flex-col items-center gap-1">
-                <div className="w-10 h-10 rounded-full bg-blue-900/40 border border-blue-700 flex items-center justify-center font-bold text-blue-300 text-sm">{n.number}</div>
-                <div className="text-xs text-slate-500">{n.lastDrawsAgo}x</div>
-              </div>
-            ))}
+          <div className="card-header">📊 Analisis per Posisi (AS · KOP · KEPALA · EKOR)</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 text-slate-500 text-xs uppercase">
+                  <th className="text-left py-2 pr-4">Posisi</th>
+                  <th className="text-left py-2 pr-4">Terpanas</th>
+                  <th className="text-left py-2 pr-4">Terdingin</th>
+                  <th className="text-left py-2">Paling Sering</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.posStats.map(ps => (
+                  <tr key={ps.pos} className="border-b border-slate-800/50 hover:bg-white/2">
+                    <td className="py-2 pr-4 font-semibold text-slate-300">{ps.label}</td>
+                    <td className="py-2 pr-4"><span className="text-red-400 font-bold">{ps.hotDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.hotDigit.count}x)</span></td>
+                    <td className="py-2 pr-4"><span className="text-blue-400 font-bold">{ps.coldDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.coldDigit.lastDrawsAgo} lalu)</span></td>
+                    <td className="py-2"><span className="text-green-400 font-bold">{ps.freqDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.freqDigit.pct}%)</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Positional Analysis ── */}
-      <div className="card">
-        <div className="card-header">📊 Analisis per Posisi (AS · KOP · KEPALA · EKOR)</div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700 text-slate-500 text-xs uppercase">
-                <th className="text-left py-2 pr-4">Posisi</th>
-                <th className="text-left py-2 pr-4">Terpanas</th>
-                <th className="text-left py-2 pr-4">Terdingin</th>
-                <th className="text-left py-2">Paling Sering</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.posStats.map(ps => (
-                <tr key={ps.pos} className="border-b border-slate-800/50 hover:bg-white/2">
-                  <td className="py-2 pr-4 font-semibold text-slate-300">{ps.label}</td>
-                  <td className="py-2 pr-4"><span className="text-red-400 font-bold">{ps.hotDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.hotDigit.count}x)</span></td>
-                  <td className="py-2 pr-4"><span className="text-blue-400 font-bold">{ps.coldDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.coldDigit.lastDrawsAgo} lalu)</span></td>
-                  <td className="py-2"><span className="text-green-400 font-bold">{ps.freqDigit.digit}</span> <span className="text-slate-500 text-xs">({ps.freqDigit.pct}%)</span></td>
+      {/* ── 6. Recent 10 ── */}
+      {data && (
+        <div className="card">
+          <div className="card-header">📋 10 Draw Terakhir</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 text-slate-500 text-xs uppercase">
+                  <th className="text-left py-2 pr-3">Tanggal</th>
+                  <th className="text-left py-2 pr-3">4D</th>
+                  <th className="text-left py-2 pr-3">3D</th>
+                  <th className="text-left py-2">2D</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.recentResults.slice(0, 10).map(r => (
+                  <tr key={r.id} className="border-b border-slate-800/50 hover:bg-white/2">
+                    <td className="py-2 pr-3 text-slate-400">{r.draw_date}</td>
+                    <td className="py-2 pr-3 font-mono font-bold text-white">{r.result_4d.padStart(4,'0')}</td>
+                    <td className="py-2 pr-3 font-mono text-amber-400">{r.result_3d}</td>
+                    <td className="py-2 font-mono text-green-400">{r.result_2d}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Recent 10 ── */}
-      <div className="card">
-        <div className="card-header">📋 10 Draw Terakhir</div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700 text-slate-500 text-xs uppercase">
-                <th className="text-left py-2 pr-3">Tanggal</th>
-                <th className="text-left py-2 pr-3">4D</th>
-                <th className="text-left py-2 pr-3">3D</th>
-                <th className="text-left py-2">2D</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentResults.slice(0, 10).map(r => (
-                <tr key={r.id} className="border-b border-slate-800/50 hover:bg-white/2">
-                  <td className="py-2 pr-3 text-slate-400">{r.draw_date}</td>
-                  <td className="py-2 pr-3 font-mono font-bold text-white">{r.result_4d.padStart(4,'0')}</td>
-                  <td className="py-2 pr-3 font-mono text-amber-400">{r.result_3d}</td>
-                  <td className="py-2 font-mono text-green-400">{r.result_2d}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* ── 7. Input Result (paling bawah) ── */}
+      <QuickInput onSaved={handleSaved} />
+
     </div>
   );
 }
