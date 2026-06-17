@@ -644,7 +644,10 @@ router.get("/angka-fix", (_req, res): void => {
   // ── 4D/BB Fix via BB-campuran + boosts ──
   const digitScore = (d: number) => [0,1,2,3].reduce((s, p) => s + ps(p, d), 0);
   const top5 = Array.from({length:10},(_,d)=>d).sort((a,b)=>digitScore(b)-digitScore(a)).slice(0,5);
-  const excluded4D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+  const excluded4D  = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+  // Hindari 3D/2D yang sama dengan hasil N draw terakhir
+  const excluded3D_recent = new Set(rows.slice(0,7).map(r=>r.result_4d.padStart(4,"0").slice(1)));
+  const excluded2D_recent = new Set(rows.slice(0,5).map(r=>r.result_4d.padStart(4,"0").slice(2)));
 
   const cands4D: { num: string; score: number }[] = [];
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
@@ -652,6 +655,9 @@ router.get("/angka-fix", (_req, res): void => {
     if (excluded4D.has(num)) continue;
     // Hindari angka kembar — semua digit harus unik
     if (new Set([d0,d1,d2,d3]).size < 4) continue;
+    // Hindari 3D/2D yang muncul di draw terakhir
+    if (excluded3D_recent.has(num.slice(1))) continue;
+    if (excluded2D_recent.has(num.slice(2))) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
     if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;   // shio boost
     if (goodNextEkors.has(d3))      score *= 1.12;   // pola boost
@@ -760,7 +766,10 @@ router.get("/rekomendasi", (_req, res): void => {
     .slice(0,5);
 
   // ── Generate top 10 4D dari top5 digits (BB-campuran) ──
-  const excluded4D = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+  const excluded4D  = new Set(rows.slice(0,14).map(r=>r.result_4d.padStart(4,"0")));
+  // Hindari 3D/2D yang sama dengan hasil N draw terakhir
+  const excluded3D_recent = new Set(rows.slice(0,7).map(r=>r.result_4d.padStart(4,"0").slice(1)));
+  const excluded2D_recent = new Set(rows.slice(0,5).map(r=>r.result_4d.padStart(4,"0").slice(2)));
 
   const cands4D: { num: string; score: number }[] = [];
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
@@ -768,6 +777,9 @@ router.get("/rekomendasi", (_req, res): void => {
     if (excluded4D.has(num)) continue;
     // Hindari angka kembar — semua digit harus unik
     if (new Set([d0,d1,d2,d3]).size < 4) continue;
+    // Hindari 3D/2D yang muncul di draw terakhir
+    if (excluded3D_recent.has(num.slice(1))) continue;
+    if (excluded2D_recent.has(num.slice(2))) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
     if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;
     if (goodNextEkors.has(d3))      score *= 1.12;
