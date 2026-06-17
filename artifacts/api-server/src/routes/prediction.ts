@@ -650,6 +650,8 @@ router.get("/angka-fix", (_req, res): void => {
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
     if (excluded4D.has(num)) continue;
+    // Hindari angka kembar — semua digit harus unik
+    if (new Set([d0,d1,d2,d3]).size < 4) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
     if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;   // shio boost
     if (goodNextEkors.has(d3))      score *= 1.12;   // pola boost
@@ -764,6 +766,8 @@ router.get("/rekomendasi", (_req, res): void => {
   for (const d0 of top5) for (const d1 of top5) for (const d2 of top5) for (const d3 of top5) {
     const num = `${d0}${d1}${d2}${d3}`;
     if (excluded4D.has(num)) continue;
+    // Hindari angka kembar — semua digit harus unik
+    if (new Set([d0,d1,d2,d3]).size < 4) continue;
     let score = ps(0,d0)+ps(1,d1)+ps(2,d2)+ps(3,d3);
     if (shio2Ds.has(`${d2}${d3}`)) score *= 1.18;
     if (goodNextEkors.has(d3))      score *= 1.12;
